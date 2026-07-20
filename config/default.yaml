@@ -13,6 +13,7 @@ strategy:
     - .json
     - .md
   require_signature: false
+  versioning_enabled: true
 
 market:
   symbols: []
@@ -22,6 +23,8 @@ market:
     - H1
     - M15
   minimum_candles: 500
+  live_poll_interval_seconds: 60
+  history_window_candles: 500
 
 storage:
   root: storage
@@ -30,3 +33,16 @@ storage:
   reports: storage/reports
   logs: storage/logs
   cache: storage/cache
+  database: storage/database
+
+execution:
+  enabled: false
+  broker: MetaTrader
+  auto_trade: false
+  lot_size: 0.01
+  max_open_positions: 1
+
+monitoring:
+  enabled: true
+  refresh_interval_seconds: 60
+  reanalyse_on_invalidated_zone: true
