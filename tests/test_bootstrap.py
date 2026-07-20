@@ -26,6 +26,9 @@ class _DummyErrorHandler:
         self.logger = logger
         self.error_log_path = error_log_path
 
+    def install_global_hook(self) -> None:
+        return None
+
     def handle_exception(self, exc, context="runtime"):
         raise exc
 
