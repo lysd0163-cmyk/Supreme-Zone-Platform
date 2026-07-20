@@ -12,3 +12,15 @@ class StrategyError(SupremeZoneError):
 
 class PluginError(SupremeZoneError):
     pass
+
+
+class ServiceResolutionError(SupremeZoneError):
+    pass
+
+
+class DependencyInjectionError(SupremeZoneError):
+    pass
+
+
+class EventBusError(SupremeZoneError):
+    pass
