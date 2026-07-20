@@ -36,6 +36,7 @@ def bootstrap() -> BootstrapResult:
     health_monitor = HealthMonitor()
     injector = DependencyInjector(container)
     error_handler = ErrorHandler(logger, error_log_path=settings.storage.logs / "errors.jsonl")
+    error_handler.install_global_hook()
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
