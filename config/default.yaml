@@ -1,0 +1,32 @@
+app:
+  name: Supreme Zone Platform
+  environment: development
+  log_level: INFO
+  timezone: Asia/Baghdad
+
+strategy:
+  active: null
+  directory: strategies
+  allowed_extensions:
+    - .yaml
+    - .yml
+    - .json
+    - .md
+  require_signature: false
+
+market:
+  symbols: []
+  timeframes:
+    - D1
+    - H4
+    - H1
+    - M15
+  minimum_candles: 500
+
+storage:
+  root: storage
+  charts: storage/charts
+  ohlc: storage/ohlc
+  reports: storage/reports
+  logs: storage/logs
+  cache: storage/cache
