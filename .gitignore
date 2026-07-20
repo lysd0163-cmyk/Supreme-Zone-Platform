@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+storage/logs/
+storage/charts/
+storage/ohlc/
+storage/reports/
+storage/cache/
