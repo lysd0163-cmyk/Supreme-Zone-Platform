@@ -72,6 +72,7 @@ def test_bootstrap_creates_runtime_dirs(tmp_path, monkeypatch) -> None:
     assert result.app_name == "Supreme Zone Platform"
     assert result.config_path == Path("config/default.yaml")
     assert result.storage_root == Path("storage")
+    assert result.platform is not None
     assert "DataEngine" in result.services_registered
     assert "AnalysisEngine" in result.services_registered
     assert "SupremeZonePlatform" in result.services_registered
