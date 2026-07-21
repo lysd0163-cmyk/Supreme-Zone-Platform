@@ -138,6 +138,10 @@ class DataEngine:
                 connector = self.build_mt5_connector()
         if connector is None:
             raise DataConnectionError("MT5 connector is unavailable")
+        if not connector.is_connected():
+            if not connector.connect():
+                raise DataConnectionError("MT5 connector reconnect failed")
+            self.status.mt5_connected = True
         return connector
 
     def connect_mt5(self, account_label: str | None = None) -> bool:
@@ -265,6 +269,8 @@ class DataEngine:
 
     def create_scheduler_job(self, name: str = "market-sync", bars: int | None = None) -> None:
         def job() -> Any:
+            if not self.status.mt5_connected:
+                self.connect_mt5()
             return self.sync_all(bars=bars)
 
         self.scheduler.register(name, job)
