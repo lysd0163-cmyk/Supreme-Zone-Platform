@@ -10,6 +10,10 @@ from .injector import DependencyInjector
 from .logger import configure_logging
 from .runtime import BootstrapResult
 from .settings import Settings, SettingsManager
+from ..modules.data_engine.accounts import MT5AccountManager
+from ..modules.data_engine.cache import MarketCache
+from ..modules.data_engine.database import MarketDatabase
+from ..modules.data_engine.scheduler import UpdateScheduler
 from ..modules.data_engine.service import DataEngine
 
 
@@ -38,7 +42,19 @@ def bootstrap() -> BootstrapResult:
     injector = DependencyInjector(container)
     error_handler = ErrorHandler(logger, error_log_path=settings.storage.logs / "errors.jsonl")
     error_handler.install_global_hook()
-    data_engine = DataEngine(settings)
+
+    cache = MarketCache(ttl_seconds=max(settings.market.live_poll_interval_seconds, 1))
+    database = MarketDatabase(path=settings.storage.database / "market.sqlite3")
+    scheduler = UpdateScheduler(interval_seconds=settings.market.live_poll_interval_seconds)
+    account_manager = MT5AccountManager()
+    data_engine = DataEngine(
+        settings,
+        cache=cache,
+        database=database,
+        account_manager=account_manager,
+        scheduler=scheduler,
+        error_handler=error_handler,
+    )
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
@@ -49,6 +65,10 @@ def bootstrap() -> BootstrapResult:
     container.register_instance(HealthMonitor, health_monitor)
     container.register_instance(DependencyInjector, injector)
     container.register_instance(ErrorHandler, error_handler)
+    container.register_instance(MarketCache, cache)
+    container.register_instance(MarketDatabase, database)
+    container.register_instance(UpdateScheduler, scheduler)
+    container.register_instance(MT5AccountManager, account_manager)
     container.register_instance(DataEngine, data_engine)
 
     event_bus.publish("system.bootstrap.started", {"app_name": settings.app_name})
@@ -67,6 +87,10 @@ def bootstrap() -> BootstrapResult:
             "HealthMonitor",
             "DependencyInjector",
             "ErrorHandler",
+            "MarketCache",
+            "MarketDatabase",
+            "UpdateScheduler",
+            "MT5AccountManager",
             "DataEngine",
         ),
     )
