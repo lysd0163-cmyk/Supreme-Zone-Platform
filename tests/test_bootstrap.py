@@ -11,7 +11,28 @@ class _DummySettings:
     log_level = "INFO"
 
     class storage:
+        root = Path("storage")
+        charts = Path("storage/charts")
+        ohlc = Path("storage/ohlc")
+        reports = Path("storage/reports")
         logs = Path("storage/logs")
+        cache = Path("storage/cache")
+        database = Path("storage/database")
+
+    class mt5:
+        enabled = False
+        terminal_path = None
+        server = None
+        login = None
+        password = None
+
+    @property
+    def symbols(self) -> tuple[str, ...]:
+        return ()
+
+    @property
+    def timeframes(self) -> tuple[str, ...]:
+        return ("D1", "H4", "H1", "M15")
 
 
 class _DummySettingsManager:
@@ -45,7 +66,7 @@ def test_bootstrap_creates_runtime_dirs(tmp_path, monkeypatch) -> None:
     assert result.app_name == "Supreme Zone Platform"
     assert result.config_path == Path("config/default.yaml")
     assert result.storage_root == Path("storage")
-    assert "ErrorHandler" in result.services_registered
+    assert "DataEngine" in result.services_registered
 
     for folder in ["storage/charts", "storage/ohlc", "storage/reports", "storage/logs", "storage/cache", "storage/database"]:
         assert (tmp_path / folder).exists()
