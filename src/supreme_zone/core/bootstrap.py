@@ -11,12 +11,20 @@ from .logger import configure_logging
 from .runtime import BootstrapResult
 from .settings import Settings, SettingsManager
 from ..modules.analysis_engine.service import AnalysisEngine
+from ..modules.backtest_engine.service import BacktestEngine
+from ..modules.dashboard.service import DashboardService
 from ..modules.data_engine.accounts import MT5AccountManager
 from ..modules.data_engine.cache import MarketCache
 from ..modules.data_engine.database import MarketDatabase
 from ..modules.data_engine.scheduler import UpdateScheduler
 from ..modules.data_engine.service import DataEngine
+from ..modules.entry_engine.service import EntryEngine
+from ..modules.execution_engine.service import ExecutionEngine
+from ..modules.monitoring_engine.service import MonitoringEngine
+from ..modules.report_engine.service import ReportEngine
+from ..modules.search_engine.service import SearchEngine
 from ..modules.strategy_manager.service import StrategyManager
+from ..modules.validation_engine.service import ValidationEngine
 
 
 _REQUIRED_STORAGE_DIRS = (
@@ -59,6 +67,26 @@ def bootstrap() -> BootstrapResult:
         error_handler=error_handler,
     )
     analysis_engine = AnalysisEngine(settings, data_engine=data_engine, strategy_manager=strategy_manager)
+    validation_engine = ValidationEngine()
+    search_engine = SearchEngine(analysis_engine=analysis_engine, validation_engine=validation_engine)
+    entry_engine = EntryEngine()
+    execution_engine = ExecutionEngine(connector=data_engine._connector, default_volume=settings.execution.lot_size, magic=10101)
+    monitoring_engine = MonitoringEngine(
+        data_engine=data_engine,
+        analysis_engine=analysis_engine,
+        validation_engine=validation_engine,
+        search_engine=search_engine,
+        entry_engine=entry_engine,
+        interval_seconds=settings.monitoring.refresh_interval_seconds,
+    )
+    report_engine = ReportEngine(output_dir=settings.storage.reports)
+    backtest_engine = BacktestEngine(
+        analysis_engine=analysis_engine,
+        validation_engine=validation_engine,
+        entry_engine=entry_engine,
+        report_engine=report_engine,
+    )
+    dashboard_service = DashboardService(output_dir=settings.storage.reports / "dashboard")
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
@@ -76,6 +104,14 @@ def bootstrap() -> BootstrapResult:
     container.register_instance(StrategyManager, strategy_manager)
     container.register_instance(DataEngine, data_engine)
     container.register_instance(AnalysisEngine, analysis_engine)
+    container.register_instance(ValidationEngine, validation_engine)
+    container.register_instance(SearchEngine, search_engine)
+    container.register_instance(EntryEngine, entry_engine)
+    container.register_instance(ExecutionEngine, execution_engine)
+    container.register_instance(MonitoringEngine, monitoring_engine)
+    container.register_instance(ReportEngine, report_engine)
+    container.register_instance(BacktestEngine, backtest_engine)
+    container.register_instance(DashboardService, dashboard_service)
 
     event_bus.publish("system.bootstrap.started", {"app_name": settings.app_name})
 
@@ -100,6 +136,14 @@ def bootstrap() -> BootstrapResult:
             "StrategyManager",
             "DataEngine",
             "AnalysisEngine",
+            "ValidationEngine",
+            "SearchEngine",
+            "EntryEngine",
+            "ExecutionEngine",
+            "MonitoringEngine",
+            "ReportEngine",
+            "BacktestEngine",
+            "DashboardService",
         ),
     )
 
