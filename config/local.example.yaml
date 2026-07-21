@@ -50,6 +50,15 @@ mt5:
   server: YOUR_MT5_SERVER
   login: 0
   password: YOUR_PASSWORD
+  accounts:
+    - label: primary
+      server: YOUR_MT5_SERVER
+      login: 0
+      password: YOUR_PASSWORD
+    - label: secondary
+      server: YOUR_SECOND_SERVER
+      login: 0
+      password: YOUR_PASSWORD
 
 monitoring:
   enabled: true
