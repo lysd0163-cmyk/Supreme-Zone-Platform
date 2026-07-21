@@ -8,6 +8,7 @@ from .events import EventBus
 from .health import HealthMonitor
 from .injector import DependencyInjector
 from .logger import configure_logging
+from .platform import SupremeZonePlatform
 from .runtime import BootstrapResult
 from .settings import Settings, SettingsManager
 from ..modules.analysis_engine.service import AnalysisEngine
@@ -87,6 +88,18 @@ def bootstrap() -> BootstrapResult:
         report_engine=report_engine,
     )
     dashboard_service = DashboardService(output_dir=settings.storage.reports / "dashboard")
+    platform = SupremeZonePlatform(
+        data_engine=data_engine,
+        analysis_engine=analysis_engine,
+        validation_engine=validation_engine,
+        search_engine=search_engine,
+        entry_engine=entry_engine,
+        execution_engine=execution_engine,
+        monitoring_engine=monitoring_engine,
+        report_engine=report_engine,
+        backtest_engine=backtest_engine,
+        dashboard_service=dashboard_service,
+    )
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
@@ -112,6 +125,7 @@ def bootstrap() -> BootstrapResult:
     container.register_instance(ReportEngine, report_engine)
     container.register_instance(BacktestEngine, backtest_engine)
     container.register_instance(DashboardService, dashboard_service)
+    container.register_instance(SupremeZonePlatform, platform)
 
     event_bus.publish("system.bootstrap.started", {"app_name": settings.app_name})
 
@@ -144,6 +158,7 @@ def bootstrap() -> BootstrapResult:
             "ReportEngine",
             "BacktestEngine",
             "DashboardService",
+            "SupremeZonePlatform",
         ),
     )
 
