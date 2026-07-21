@@ -70,7 +70,7 @@ def bootstrap() -> BootstrapResult:
     validation_engine = ValidationEngine()
     search_engine = SearchEngine(analysis_engine=analysis_engine, validation_engine=validation_engine)
     entry_engine = EntryEngine()
-    execution_engine = ExecutionEngine(connector=data_engine._connector, default_volume=settings.execution.lot_size, magic=10101)
+    execution_engine = ExecutionEngine(data_engine=data_engine, default_volume=settings.execution.lot_size, magic=10101)
     monitoring_engine = MonitoringEngine(
         data_engine=data_engine,
         analysis_engine=analysis_engine,
