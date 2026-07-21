@@ -8,9 +8,8 @@ from ..modules.analysis_engine.models import AnalysisReport
 from ..modules.analysis_engine.service import AnalysisEngine
 from ..modules.backtest_engine.service import BacktestEngine
 from ..modules.dashboard.service import DashboardService
-from ..modules.data_engine.market import MarketBar
 from ..modules.data_engine.service import DataEngine
-from ..modules.entry_engine.models import EntrySignal, EntryStatus
+from ..modules.entry_engine.models import EntrySignal
 from ..modules.entry_engine.service import EntryEngine
 from ..modules.execution_engine.models import TradeResult
 from ..modules.execution_engine.service import ExecutionEngine
@@ -66,18 +65,7 @@ class SupremeZonePlatform:
         symbols: Iterable[str] | None = None,
     ) -> PlatformRunResult:
         try:
-            if self.data_engine.settings.mt5.enabled and not self.data_engine.status.mt5_connected:
-                try:
-                    self.data_engine.connect_mt5()
-                except Exception:
-                    pass
-
-            if self.data_engine.symbol_manager.symbols and self.data_engine.status.mt5_connected:
-                try:
-                    self.data_engine.sync_all(bars=bars)
-                except Exception:
-                    pass
-
+            self._ensure_connection()
             selected_symbols = tuple(symbols or self.data_engine.settings.symbols or self.data_engine.symbol_manager.symbols)
             analysis_reports: list[AnalysisReport] = []
             search_hits: list[SearchHit] = []
@@ -91,8 +79,9 @@ class SupremeZonePlatform:
                 report = self.analysis_engine.analyze_symbol(symbol, strategy_path=strategy_path, bars=bars)
                 analysis_reports.append(report)
 
+                frame_limit = bars or report.metadata.get("minimum_candles", 500)
                 bars_by_timeframe = {
-                    frame.timeframe: self.analysis_engine.data_reader.load_bars(symbol, frame.timeframe, limit=bars or self.analysis_engine.status.last_report.metadata.get("minimum_candles", 500) if self.analysis_engine.status.last_report else 500)
+                    frame.timeframe: self.analysis_engine.data_reader.load_bars(symbol, frame.timeframe, limit=frame_limit)
                     for frame in report.frame_analyses
                 }
                 validation_map = self.validation_engine.validate_active_zones(report, bars_by_timeframe)
@@ -100,13 +89,10 @@ class SupremeZonePlatform:
                     validations[f"{symbol}:{key}"] = value
 
                 hit = self.search_engine.search_symbol(symbol, strategy_path=strategy_path, bars=bars)
+                candidate = hit.candidate if hit is not None else report.buy_zone or report.sell_zone
+                validation = hit.validation if hit is not None else None
                 if hit is not None:
                     search_hits.append(hit)
-                    candidate = hit.candidate
-                    validation = hit.validation
-                else:
-                    candidate = report.buy_zone or report.sell_zone
-                    validation = None
 
                 if candidate is not None:
                     m15_bars = bars_by_timeframe.get("M15", ())
@@ -115,19 +101,14 @@ class SupremeZonePlatform:
                     execution = self.execution_engine.execute(entry)
                     executions.append(execution)
                     report_bundle = ReportBundle(symbol=symbol, analysis=report, validation=validation_map, entry=entry, execution=execution, backtest={})
+                    self.monitoring_engine.watch(
+                        MonitoredZone(symbol=symbol, candidate=candidate, validation=validation, entry=entry, report=report)
+                    )
+                    backtest_results.append(self.backtest_engine.run_symbol(symbol, bars_by_timeframe, strategy_path=strategy_path))
                 else:
                     report_bundle = ReportBundle(symbol=symbol, analysis=report, validation=validation_map, backtest={})
 
-                artifact = self.report_engine.generate(report_bundle)
-                report_artifacts.append(artifact)
-
-                if candidate is not None:
-                    self.monitoring_engine.watch(
-                        MonitoredZone(symbol=symbol, candidate=candidate, validation=validation, entry=entries[-1] if entries else None, report=report)
-                    )
-                    backtest_results.append(
-                        self.backtest_engine.run_symbol(symbol, bars_by_timeframe, strategy_path=strategy_path)
-                    )
+                report_artifacts.append(self.report_engine.generate(report_bundle))
 
             snapshot = self.dashboard_service.snapshot(
                 analysis_engine=self.analysis_engine,
@@ -157,6 +138,18 @@ class SupremeZonePlatform:
         except Exception as exc:
             self.state.last_error = str(exc)
             raise
+
+    def _ensure_connection(self) -> None:
+        if self.data_engine.settings.mt5.enabled and not self.data_engine.status.mt5_connected:
+            try:
+                self.data_engine.connect_mt5()
+            except Exception:
+                return
+        if self.data_engine.symbol_manager.symbols and self.data_engine.status.mt5_connected:
+            try:
+                self.data_engine.sync_all()
+            except Exception:
+                return
 
     def run_forever(self, interval_seconds: int = 60, **kwargs: Any) -> None:
         from time import sleep
