@@ -21,6 +21,11 @@ storage:
   logs: demo-storage/logs
 execution:
   enabled: true
+mt5:
+  enabled: true
+  server: Demo-Server
+  login: 12345
+  password: secret
 monitoring:
   enabled: false
 """,
@@ -35,5 +40,9 @@ monitoring:
     assert settings.symbols == ("EURUSD", "GBPUSD")
     assert settings.timeframes == ("D1", "H4")
     assert settings.execution.enabled is True
+    assert settings.mt5.enabled is True
+    assert settings.mt5.server == "Demo-Server"
+    assert settings.mt5.login == 12345
+    assert settings.mt5.password == "secret"
     assert settings.monitoring.enabled is False
     assert settings.storage.logs == Path("demo-storage/logs")
