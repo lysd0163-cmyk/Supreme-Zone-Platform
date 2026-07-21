@@ -112,8 +112,10 @@ def test_analysis_engine_extracts_candidates(tmp_path) -> None:
     assert report.sell_zone is not None
     assert report.buy_zone.side.value == "BUY"
     assert report.sell_zone.side.value == "SELL"
-    assert report.buy_zone.timeframe in {"D1", "H4", "H1", "M15"}
-    assert report.sell_zone.timeframe in {"D1", "H4", "H1", "M15"}
+    assert report.metadata["governance_required_score"] == 18
+    assert "governance" in report.metadata
+    assert report.metadata["governance"]["D1"]["buy"] is not None
+    assert "score" in report.metadata["governance"]["D1"]["buy"]
     assert report.frame_analyses[0].image is not None
     assert report.frame_analyses[0].buy_candidate is not None
     assert report.frame_analyses[0].sell_candidate is not None
