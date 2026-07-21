@@ -59,12 +59,35 @@ class ExecutionSettings:
 
 
 @dataclass(slots=True, frozen=True)
+class MT5AccountSettings:
+    label: str = "default"
+    server: str | None = None
+    login: int | None = None
+    password: str | None = None
+
+    @property
+    def is_complete(self) -> bool:
+        return self.server is not None and self.login is not None and self.password is not None
+
+
+@dataclass(slots=True, frozen=True)
 class MT5Settings:
     enabled: bool = False
     terminal_path: str | None = None
     server: str | None = None
     login: int | None = None
     password: str | None = None
+    accounts: tuple[MT5AccountSettings, ...] = ()
+
+    @property
+    def primary_account(self) -> MT5AccountSettings:
+        if self.accounts:
+            return self.accounts[0]
+        return MT5AccountSettings(server=self.server, login=self.login, password=self.password)
+
+    @property
+    def has_accounts(self) -> bool:
+        return bool(self.accounts)
 
 
 @dataclass(slots=True, frozen=True)
@@ -194,12 +217,27 @@ class SettingsManager:
     def _build_mt5(section: Any) -> MT5Settings:
         data = section if isinstance(section, dict) else {}
         login = data.get("login")
+        accounts_raw = data.get("accounts", ())
+        accounts: list[MT5AccountSettings] = []
+        if isinstance(accounts_raw, list):
+            for index, item in enumerate(accounts_raw):
+                account = item if isinstance(item, dict) else {}
+                account_login = account.get("login")
+                accounts.append(
+                    MT5AccountSettings(
+                        label=str(account.get("label", f"account_{index + 1}")),
+                        server=str(account.get("server")) if account.get("server") not in (None, "") else None,
+                        login=int(account_login) if account_login not in (None, "") else None,
+                        password=str(account.get("password")) if account.get("password") not in (None, "") else None,
+                    )
+                )
         return MT5Settings(
             enabled=bool(data.get("enabled", MT5Settings.enabled)),
             terminal_path=str(data.get("terminal_path")) if data.get("terminal_path") not in (None, "") else None,
             server=str(data.get("server")) if data.get("server") not in (None, "") else None,
             login=int(login) if login not in (None, "") else None,
             password=str(data.get("password")) if data.get("password") not in (None, "") else None,
+            accounts=tuple(accounts),
         )
 
     @staticmethod
