@@ -48,6 +48,7 @@ mt5:
   server: null
   login: null
   password: null
+  accounts: []
 
 monitoring:
   enabled: true
