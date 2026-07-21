@@ -10,11 +10,13 @@ from .injector import DependencyInjector
 from .logger import configure_logging
 from .runtime import BootstrapResult
 from .settings import Settings, SettingsManager
+from ..modules.analysis_engine.service import AnalysisEngine
 from ..modules.data_engine.accounts import MT5AccountManager
 from ..modules.data_engine.cache import MarketCache
 from ..modules.data_engine.database import MarketDatabase
 from ..modules.data_engine.scheduler import UpdateScheduler
 from ..modules.data_engine.service import DataEngine
+from ..modules.strategy_manager.service import StrategyManager
 
 
 _REQUIRED_STORAGE_DIRS = (
@@ -47,6 +49,7 @@ def bootstrap() -> BootstrapResult:
     database = MarketDatabase(path=settings.storage.database / "market.sqlite3")
     scheduler = UpdateScheduler(interval_seconds=settings.market.live_poll_interval_seconds)
     account_manager = MT5AccountManager()
+    strategy_manager = StrategyManager()
     data_engine = DataEngine(
         settings,
         cache=cache,
@@ -55,6 +58,7 @@ def bootstrap() -> BootstrapResult:
         scheduler=scheduler,
         error_handler=error_handler,
     )
+    analysis_engine = AnalysisEngine(settings, data_engine=data_engine, strategy_manager=strategy_manager)
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
@@ -69,7 +73,9 @@ def bootstrap() -> BootstrapResult:
     container.register_instance(MarketDatabase, database)
     container.register_instance(UpdateScheduler, scheduler)
     container.register_instance(MT5AccountManager, account_manager)
+    container.register_instance(StrategyManager, strategy_manager)
     container.register_instance(DataEngine, data_engine)
+    container.register_instance(AnalysisEngine, analysis_engine)
 
     event_bus.publish("system.bootstrap.started", {"app_name": settings.app_name})
 
@@ -91,7 +97,9 @@ def bootstrap() -> BootstrapResult:
             "MarketDatabase",
             "UpdateScheduler",
             "MT5AccountManager",
+            "StrategyManager",
             "DataEngine",
+            "AnalysisEngine",
         ),
     )
 
