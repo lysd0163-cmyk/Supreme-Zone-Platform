@@ -59,6 +59,15 @@ class ExecutionSettings:
 
 
 @dataclass(slots=True, frozen=True)
+class MT5Settings:
+    enabled: bool = False
+    terminal_path: str | None = None
+    server: str | None = None
+    login: int | None = None
+    password: str | None = None
+
+
+@dataclass(slots=True, frozen=True)
 class MonitoringSettings:
     enabled: bool = True
     refresh_interval_seconds: int = 60
@@ -72,6 +81,7 @@ class Settings:
     strategy: StrategySettings = field(default_factory=StrategySettings)
     storage: StorageSettings = field(default_factory=StorageSettings)
     execution: ExecutionSettings = field(default_factory=ExecutionSettings)
+    mt5: MT5Settings = field(default_factory=MT5Settings)
     monitoring: MonitoringSettings = field(default_factory=MonitoringSettings)
 
     @property
@@ -116,6 +126,7 @@ class SettingsManager:
             strategy=self._build_strategy(raw.get("strategy", {})),
             storage=self._build_storage(raw.get("storage", {})),
             execution=self._build_execution(raw.get("execution", {})),
+            mt5=self._build_mt5(raw.get("mt5", {})),
             monitoring=self._build_monitoring(raw.get("monitoring", {})),
         )
 
@@ -177,6 +188,18 @@ class SettingsManager:
             auto_trade=bool(data.get("auto_trade", ExecutionSettings.auto_trade)),
             lot_size=float(data.get("lot_size", ExecutionSettings.lot_size)),
             max_open_positions=int(data.get("max_open_positions", ExecutionSettings.max_open_positions)),
+        )
+
+    @staticmethod
+    def _build_mt5(section: Any) -> MT5Settings:
+        data = section if isinstance(section, dict) else {}
+        login = data.get("login")
+        return MT5Settings(
+            enabled=bool(data.get("enabled", MT5Settings.enabled)),
+            terminal_path=str(data.get("terminal_path")) if data.get("terminal_path") not in (None, "") else None,
+            server=str(data.get("server")) if data.get("server") not in (None, "") else None,
+            login=int(login) if login not in (None, "") else None,
+            password=str(data.get("password")) if data.get("password") not in (None, "") else None,
         )
 
     @staticmethod
