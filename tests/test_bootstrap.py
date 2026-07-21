@@ -19,12 +19,18 @@ class _DummySettings:
         cache = Path("storage/cache")
         database = Path("storage/database")
 
+    class market:
+        live_poll_interval_seconds = 60
+        history_window_candles = 500
+        minimum_candles = 500
+
     class mt5:
         enabled = False
         terminal_path = None
         server = None
         login = None
         password = None
+        accounts = ()
 
     @property
     def symbols(self) -> tuple[str, ...]:
