@@ -11,7 +11,6 @@ from .cache import MarketCache
 from .chart_renderer import ChartRenderer
 from .database import MarketDatabase
 from .errors import DataConnectionError, DataSyncError
-from .live_stream import LiveDataStream
 from .market import MarketBar
 from .models import MT5Credentials, MarketDataRequest
 from .mt5_connector import MT5Connector
@@ -162,10 +161,7 @@ class DataEngine:
 
     def reconnect_mt5(self, account_label: str | None = None) -> bool:
         connector = self._connector_for_account(account_label)
-        try:
-            connector.shutdown()
-        finally:
-            pass
+        connector.shutdown()
         return connector.connect()
 
     def _connector_or_fail(self) -> MT5Connector:
@@ -258,7 +254,9 @@ class DataEngine:
                 )
         return results
 
-    def create_live_stream(self, interval_seconds: int | None = None) -> LiveDataStream:
+    def create_live_stream(self, interval_seconds: int | None = None):
+        from .live_stream import LiveDataStream
+
         return LiveDataStream(
             engine=self,
             interval_seconds=interval_seconds or self.settings.market.live_poll_interval_seconds,
