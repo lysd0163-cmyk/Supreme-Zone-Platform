@@ -1,0 +1,57 @@
+app:
+  name: Supreme Zone Platform
+  environment: development
+  log_level: INFO
+  timezone: Asia/Baghdad
+
+strategy:
+  active: null
+  directory: strategies
+  allowed_extensions:
+    - .yaml
+    - .yml
+    - .json
+    - .md
+  require_signature: false
+  versioning_enabled: true
+
+market:
+  symbols:
+    - EURUSD
+    - GBPUSD
+  timeframes:
+    - D1
+    - H4
+    - H1
+    - M15
+  minimum_candles: 500
+  live_poll_interval_seconds: 60
+  history_window_candles: 500
+
+storage:
+  root: storage
+  charts: storage/charts
+  ohlc: storage/ohlc
+  reports: storage/reports
+  logs: storage/logs
+  cache: storage/cache
+  database: storage/database
+
+execution:
+  enabled: false
+  broker: MetaTrader
+  auto_trade: false
+  lot_size: 0.01
+  max_open_positions: 1
+
+mt5:
+  enabled: true
+  terminal_path: null
+  server: YOUR_MT5_SERVER
+  login: 0
+  password: YOUR_PASSWORD
+
+monitoring:
+  enabled: true
+  refresh_interval_seconds: 60
+  reanalyse_on_invalidated_zone: true
