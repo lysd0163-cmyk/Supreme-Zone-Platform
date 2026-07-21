@@ -160,6 +160,7 @@ def bootstrap() -> BootstrapResult:
             "DashboardService",
             "SupremeZonePlatform",
         ),
+        platform=platform,
     )
 
     event_bus.publish("system.bootstrap.ready", result)
