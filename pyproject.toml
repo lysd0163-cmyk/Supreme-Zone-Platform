@@ -9,7 +9,7 @@ description = "Institutional trading platform foundation"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Ali Saad" }]
-dependencies = ["PyYAML>=6.0", "pytest>=8.0"]
+dependencies = ["PyYAML>=6.0", "matplotlib>=3.8", "pytest>=8.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
