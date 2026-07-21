@@ -74,6 +74,7 @@ def test_bootstrap_creates_runtime_dirs(tmp_path, monkeypatch) -> None:
     assert result.storage_root == Path("storage")
     assert "DataEngine" in result.services_registered
     assert "AnalysisEngine" in result.services_registered
+    assert "SupremeZonePlatform" in result.services_registered
 
     for folder in ["storage/charts", "storage/ohlc", "storage/reports", "storage/logs", "storage/cache", "storage/database"]:
         assert (tmp_path / folder).exists()
