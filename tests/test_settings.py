@@ -26,6 +26,15 @@ mt5:
   server: Demo-Server
   login: 12345
   password: secret
+  accounts:
+    - label: primary
+      server: Demo-Server
+      login: 12345
+      password: secret
+    - label: secondary
+      server: Demo-Server-2
+      login: 54321
+      password: secret2
 monitoring:
   enabled: false
 """,
@@ -44,5 +53,8 @@ monitoring:
     assert settings.mt5.server == "Demo-Server"
     assert settings.mt5.login == 12345
     assert settings.mt5.password == "secret"
+    assert settings.mt5.has_accounts is True
+    assert settings.mt5.accounts[0].label == "primary"
+    assert settings.mt5.accounts[1].label == "secondary"
     assert settings.monitoring.enabled is False
     assert settings.storage.logs == Path("demo-storage/logs")
