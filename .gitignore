@@ -6,6 +6,7 @@ ENV/
 build/
 dist/
 *.egg-info/
+config/local.yaml
 storage/logs/
 storage/charts/
 storage/ohlc/
