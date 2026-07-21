@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
 
 from ..data_engine.mt5_connector import MT5Connector
+from ..data_engine.service import DataEngine
 from ..entry_engine.models import EntrySignal, EntryStatus
 from .models import ExecutionStatus, TradeRequest, TradeResult, TradeSide
 
@@ -11,9 +11,22 @@ from .models import ExecutionStatus, TradeRequest, TradeResult, TradeSide
 @dataclass(slots=True)
 class ExecutionEngine:
     connector: MT5Connector | None = None
+    data_engine: DataEngine | None = None
     default_volume: float = 0.01
     magic: int = 10101
     _results: list[TradeResult] = field(default_factory=list, init=False)
+
+    def _active_connector(self) -> MT5Connector | None:
+        if self.connector is not None:
+            return self.connector
+        if self.data_engine is not None:
+            if self.data_engine._connector is not None:  # noqa: SLF001 - runtime bridge
+                return self.data_engine._connector
+            try:
+                return self.data_engine.build_mt5_connector()
+            except Exception:
+                return None
+        return None
 
     def execute(self, signal: EntrySignal | None) -> TradeResult:
         if signal is None:
@@ -35,13 +48,14 @@ class ExecutionEngine:
             return result
 
         request = self._request_from_signal(signal)
-        if self.connector is None:
+        connector = self._active_connector()
+        if connector is None:
             result = TradeResult(request=request, status=ExecutionStatus.FAILED, error="no-connector")
             self._results.append(result)
             return result
 
         try:
-            response = self.connector.place_market_order(
+            response = connector.place_market_order(
                 symbol=request.symbol,
                 volume=request.volume,
                 side=request.side.value,
@@ -57,12 +71,13 @@ class ExecutionEngine:
         return result
 
     def close(self, ticket: int, symbol: str, volume: float, side: TradeSide) -> TradeResult:
-        if self.connector is None:
+        connector = self._active_connector()
+        if connector is None:
             result = TradeResult(request=TradeRequest(symbol=symbol, side=side, volume=volume), status=ExecutionStatus.FAILED, error="no-connector")
             self._results.append(result)
             return result
         try:
-            response = self.connector.close_position(ticket=ticket, symbol=symbol, volume=volume, side=side.value)
+            response = connector.close_position(ticket=ticket, symbol=symbol, volume=volume, side=side.value)
             request = TradeRequest(symbol=symbol, side=side, volume=volume)
             result = TradeResult(request=request, status=ExecutionStatus.SENT, broker_response=response)
         except Exception as exc:
