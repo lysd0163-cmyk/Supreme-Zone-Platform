@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from statistics import fmean
 from typing import Iterable
 
 from ..analysis_engine.service import AnalysisEngine
@@ -42,10 +41,7 @@ class BacktestEngine:
                 if signal.status.value != "CONFIRMED":
                     continue
                 trade_count += 1
-                if candidate.side.value == "BUY":
-                    direction = 1.0
-                else:
-                    direction = -1.0
+                direction = 1.0 if candidate.side.value == "BUY" else -1.0
                 score = candidate.score * direction
                 if score >= 0:
                     wins += 1
@@ -71,7 +67,7 @@ class BacktestEngine:
             self.state.runs += 1
             self.state.last_symbol = result.symbol
             if self.report_engine is not None:
-                self.report_engine.generate(ReportBundle(symbol=symbol, analysis=report, validation=validation_map, backtest={"result": result.__dict__}))
+                self.report_engine.generate(ReportBundle(symbol=symbol, analysis=report, validation=validation_map, backtest={"result": asdict(result)}))
             return result
         except Exception as exc:
             self.state.last_error = str(exc)
