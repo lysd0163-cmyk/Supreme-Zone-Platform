@@ -42,9 +42,30 @@ class _FakeStrategyManager:
 
 
 @dataclass
+class _FakeStorage:
+    root: Path
+    charts: Path
+    ohlc: Path
+    reports: Path
+    logs: Path
+    cache: Path
+    database: Path
+
+    def save_ohlc(self, symbol: str, timeframe: str, bars):
+        self.ohlc.mkdir(parents=True, exist_ok=True)
+        path = self.ohlc / f"{symbol}_{timeframe}.json"
+        path.write_text("[]", encoding="utf-8")
+        return path
+
+    def chart_path(self, symbol: str, timeframe: str) -> Path:
+        self.charts.mkdir(parents=True, exist_ok=True)
+        return self.charts / f"{symbol}_{timeframe}.png"
+
+
+@dataclass
 class _FakeDataReader:
     bars: tuple[MarketBar, ...]
-    storage: any
+    storage: _FakeStorage
     database: any
 
     def load_bars(self, symbol: str, timeframe: str, limit: int = 500):
@@ -57,7 +78,15 @@ class _FakeDataReader:
 class _FakeDataEngine:
     def __init__(self, settings: Settings, bars: list[MarketBar]) -> None:
         self.settings = settings
-        self.storage = settings.storage
+        self.storage = _FakeStorage(
+            root=settings.storage.root,
+            charts=settings.storage.charts,
+            ohlc=settings.storage.ohlc,
+            reports=settings.storage.reports,
+            logs=settings.storage.logs,
+            cache=settings.storage.cache,
+            database=settings.storage.database,
+        )
         self.database = None
         self.status = type("Status", (), {"mt5_connected": False})()
         self.symbol_manager = type("SymbolManager", (), {"symbols": ("EURUSD",)})()
@@ -128,11 +157,10 @@ def test_platform_run_once_creates_dashboard_and_reports(tmp_path) -> None:
     data_engine = _FakeDataEngine(settings, _bars())
     strategy_manager = _FakeStrategyManager()
 
-    # Seed storage/database-like files used by the analysis reader.
     for timeframe in settings.timeframes:
         data_engine.storage.save_ohlc("EURUSD", timeframe, _bars())
-        data_engine.storage.chart_path("EURUSD", timeframe).parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGB", (1200, 800), color="white").save(data_engine.storage.chart_path("EURUSD", timeframe))
+        chart_path = data_engine.storage.chart_path("EURUSD", timeframe)
+        Image.new("RGB", (1200, 800), color="white").save(chart_path)
 
     analysis_engine = _FakeAnalysisEngine(settings, data_engine, strategy_manager, _bars())
     validation_engine = ValidationEngine()
