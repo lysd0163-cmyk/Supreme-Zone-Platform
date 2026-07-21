@@ -43,10 +43,14 @@ class MonitoringEngine:
     def run_cycle(self) -> list[MonitoredZone]:
         refreshed: list[MonitoredZone] = []
         for item in list(self._watchlist):
-            bars = self.data_engine.fetch_ohlc(item.symbol, item.candidate.timeframe, bars=self.data_engine.settings.market.history_window_candles)
+            _ = self.data_engine.fetch_ohlc(item.symbol, item.candidate.timeframe, bars=self.data_engine.settings.market.history_window_candles)
             report = self.analysis_engine.analyze_symbol(item.symbol)
             bars_by_timeframe = {frame.timeframe: frame.bars for frame in report.frame_analyses}
-            validation = self.validation_engine.validate_candidate(item.candidate, bars_by_timeframe.get(item.candidate.timeframe, ()))
+            validation_map = self.validation_engine.validate_active_zones(report, bars_by_timeframe)
+            validation = validation_map.get("buy" if item.candidate.side.value == "BUY" else "sell")
+            if validation is None:
+                validation = self.validation_engine.validate_candidate(item.candidate, bars_by_timeframe.get(item.candidate.timeframe, ()))
+
             if not validation.is_valid:
                 self.state.invalidations += 1
                 hit = self.search_engine.search_symbol(item.symbol)
