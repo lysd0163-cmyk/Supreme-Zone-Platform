@@ -30,7 +30,7 @@ class MarketSettings:
 class StrategySettings:
     active: str | None = None
     directory: str = "strategies"
-    allowed_extensions: tuple[str, ...] = (".yaml", ".yml", ".json", ".md")
+    allowed_extensions: tuple[str, ...] = (".yaml", ".yml", ".json", ".md", ".txt", ".pdf")
     require_signature: bool = False
     versioning_enabled: bool = True
 
