@@ -28,6 +28,15 @@ class ExecutionEngine:
                 return None
         return None
 
+    def open_positions(self, symbol: str | None = None) -> list[dict[str, object]]:
+        connector = self._active_connector()
+        if connector is None:
+            return []
+        try:
+            return connector.open_positions(symbol=symbol)
+        except Exception:
+            return []
+
     def execute(self, signal: EntrySignal | None) -> TradeResult:
         if signal is None:
             result = TradeResult(
