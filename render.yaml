@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: supreme-zone-platform
+    env: python
+    plan: free
+    buildCommand: pip install .
+    startCommand: uvicorn supreme_zone.webapp:app --host 0.0.0.0 --port $PORT
