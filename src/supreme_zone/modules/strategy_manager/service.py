@@ -17,8 +17,14 @@ class StrategyManager:
     def activate_strategy(self, name: str) -> StrategyDefinition:
         return self.registry.set_active(name)
 
+    def deactivate_strategy(self) -> None:
+        self.registry.clear_active()
+
     def get_active_strategy(self) -> StrategyDefinition | None:
         return self.registry.active()
 
     def list_strategies(self) -> Iterable[StrategyDefinition]:
         return self.registry.strategies.values()
+
+    def strategy_history(self, name: str | None = None):
+        return self.registry.history(name)
