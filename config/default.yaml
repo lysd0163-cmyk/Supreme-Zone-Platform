@@ -12,6 +12,8 @@ strategy:
     - .yml
     - .json
     - .md
+    - .txt
+    - .pdf
   require_signature: false
   versioning_enabled: true
 
