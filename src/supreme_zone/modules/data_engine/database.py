@@ -115,8 +115,7 @@ class MarketDatabase:
                 """,
                 (symbol.upper(), timeframe.upper(), limit),
             ).fetchall()
-        result = [dict(row) for row in reversed(rows)]
-        return result
+        return [dict(row) for row in reversed(rows)]
 
     def record_chart(self, symbol: str, timeframe: str, chart_path: Path) -> None:
         with self.connect() as connection:
@@ -145,3 +144,40 @@ class MarketDatabase:
                 "INSERT INTO data_errors (context, message, created_at, details) VALUES (?, ?, ?, ?)",
                 (context, message, datetime.now(timezone.utc).isoformat(), details),
             )
+
+    def recent_sync_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, symbol, timeframe, bars, created_at, status, details FROM sync_runs ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def recent_charts(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, symbol, timeframe, chart_path, created_at FROM charts ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def recent_errors(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, context, message, created_at, details FROM data_errors ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def summary(self) -> dict[str, Any]:
+        with self.connect() as connection:
+            sync_runs = connection.execute("SELECT COUNT(*) AS value FROM sync_runs").fetchone()["value"]
+            charts = connection.execute("SELECT COUNT(*) AS value FROM charts").fetchone()["value"]
+            errors = connection.execute("SELECT COUNT(*) AS value FROM data_errors").fetchone()["value"]
+            bars = connection.execute("SELECT COUNT(*) AS value FROM market_bars").fetchone()["value"]
+        return {
+            "bars": int(bars or 0),
+            "sync_runs": int(sync_runs or 0),
+            "charts": int(charts or 0),
+            "errors": int(errors or 0),
+        }
