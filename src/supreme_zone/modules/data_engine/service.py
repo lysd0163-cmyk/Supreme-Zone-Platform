@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from .errors import DataConnectionError, DataSyncError
 from .market import MarketBar
 from .models import MT5Credentials, MarketDataRequest
 from .mt5_connector import MT5Connector
+from .providers import MT5MarketDataProvider, TwelveDataMarketDataProvider
 from .scheduler import UpdateScheduler
 from .storage import MarketStorage
 from .symbol_manager import SymbolManager
@@ -30,6 +32,7 @@ class DataEngineStatus:
     last_ohlc_path: Path | None = None
     last_chart_path: Path | None = None
     last_sync_count: int = 0
+    data_source: str = "mt5"
 
 
 class DataEngine:
@@ -63,12 +66,25 @@ class DataEngine:
         self.status = DataEngineStatus()
         self._connector: MT5Connector | None = None
         self._connectors: dict[str, MT5Connector] = {}
+        self._twelve_data_provider: TwelveDataMarketDataProvider | None = None
+        self.data_source = os.getenv("SUPREME_DATA_SOURCE", "mt5").strip().lower() or "mt5"
+        self.twelve_data_api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+        self.twelve_data_base_url = os.getenv("TWELVE_DATA_BASE_URL", "https://api.twelvedata.com/time_series").strip()
 
         self.symbol_manager.load(settings.symbols)
         self.timeframe_manager.load(settings.timeframes)
         self.storage.ensure()
         self.database.initialize()
         self._load_accounts_from_settings()
+
+    def set_data_source(self, source: str, api_key: str | None = None, base_url: str | None = None) -> None:
+        self.data_source = source.strip().lower() or "mt5"
+        if api_key is not None:
+            self.twelve_data_api_key = api_key.strip()
+        if base_url is not None:
+            self.twelve_data_base_url = base_url.strip()
+        self.status.data_source = self.data_source
+        self._twelve_data_provider = None
 
     def _load_accounts_from_settings(self) -> None:
         mt5 = self.settings.mt5
@@ -168,11 +184,18 @@ class DataEngine:
         connector.shutdown()
         return connector.connect()
 
-    def _connector_or_fail(self) -> MT5Connector:
-        connector = self._connector_for_account()
-        if not connector.is_connected():
-            raise DataConnectionError("MT5 connector is not connected")
-        return connector
+    def _market_provider(self):
+        if self.data_source == "twelve_data":
+            if self._twelve_data_provider is None:
+                self._twelve_data_provider = TwelveDataMarketDataProvider(
+                    api_key=self.twelve_data_api_key,
+                    base_url=self.twelve_data_base_url,
+                )
+            else:
+                self._twelve_data_provider.api_key = self.twelve_data_api_key
+                self._twelve_data_provider.base_url = self.twelve_data_base_url
+            return self._twelve_data_provider
+        return None
 
     def _cache_key(self, symbol: str, timeframe: str, bars: int) -> str:
         return f"ohlc:{symbol.upper().strip()}:{timeframe.upper().strip()}:{bars}"
@@ -195,11 +218,18 @@ class DataEngine:
             if cached is not None:
                 return [bar if isinstance(bar, MarketBar) else MarketBar.from_mapping(bar) for bar in cached]
 
-        connector = self._connector_or_fail()
         request = MarketDataRequest(symbol=normalized_symbol, timeframe=normalized_timeframe, bars=requested_bars)
-        raw_bars = connector.fetch_rates(request)
-        market_bars = [MarketBar.from_mapping(item) for item in raw_bars]
+        if self.data_source == "twelve_data":
+            provider = self._market_provider()
+            if provider is None:
+                raise DataConnectionError("Twelve Data provider is unavailable")
+            raw_bars = provider.fetch_rates(request)
+        else:
+            connector = self._connector_or_fail()
+            raw_bars = connector.fetch_rates(request)
 
+        market_bars = [MarketBar.from_mapping(item) for item in raw_bars]
+        self.status.data_source = self.data_source
         self.status.last_symbol = normalized_symbol
         self.status.last_timeframe = normalized_timeframe
         self.status.last_ohlc_path = self.storage.save_ohlc(normalized_symbol, normalized_timeframe, market_bars)
@@ -234,6 +264,7 @@ class DataEngine:
                 "ohlc_path": self.status.last_ohlc_path,
                 "chart_path": chart_path,
                 "cached": use_cache and not force_refresh,
+                "data_source": self.data_source,
             }
         except Exception as exc:
             self.database.record_error("sync_market", str(exc))
@@ -269,7 +300,7 @@ class DataEngine:
 
     def create_scheduler_job(self, name: str = "market-sync", bars: int | None = None) -> None:
         def job() -> Any:
-            if not self.status.mt5_connected:
+            if self.data_source == "mt5" and not self.status.mt5_connected:
                 self.connect_mt5()
             return self.sync_all(bars=bars)
 
