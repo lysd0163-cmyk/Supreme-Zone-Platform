@@ -8,7 +8,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .core.bootstrap import bootstrap
@@ -48,6 +48,18 @@ def _get_platform() -> SupremeZonePlatform:
     return platform
 
 
+def _safe_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _safe_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_safe_json(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
 def _bootstrap_payload() -> dict[str, Any]:
     bootstrap_result = getattr(app.state, "bootstrap_result", None)
     if bootstrap_result is None:
@@ -69,7 +81,7 @@ def _strategy_payload(strategy) -> dict[str, Any]:
         "version": strategy.version,
         "source_path": str(strategy.source_path),
         "active": bool(strategy.active),
-        "raw": strategy.raw,
+        "raw": _safe_json(strategy.raw),
     }
 
 
@@ -155,14 +167,17 @@ def _apply_runtime_market_config(symbols: tuple[str, ...], timeframes: tuple[str
 
 def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any], data_config: dict[str, Any], history: dict[str, Any]) -> str:
     payload = json.dumps(
-        {
-            "snapshot": snapshot,
-            "strategies": strategies,
-            "data_config": data_config,
-            "history": history,
-            "boot": _bootstrap_payload(),
-        },
+        _safe_json(
+            {
+                "snapshot": snapshot,
+                "strategies": strategies,
+                "data_config": data_config,
+                "history": history,
+                "boot": _bootstrap_payload(),
+            }
+        ),
         ensure_ascii=False,
+        default=str,
     )
     active_strategy = strategies.get("active") or {}
     selected_symbols = ", ".join(data_config.get("symbols", []))
@@ -582,18 +597,24 @@ async def root() -> RedirectResponse:
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard() -> HTMLResponse:
-    platform = _get_platform()
-    snapshot = platform.dashboard_service.snapshot(
-        analysis_engine=platform.analysis_engine,
-        search_engine=platform.search_engine,
-        monitoring_engine=platform.monitoring_engine,
-        execution_engine=platform.execution_engine,
-        report_engine=platform.report_engine,
-        backtest_engine=platform.backtest_engine,
-    )
-    return HTMLResponse(
-        content=_render_dashboard_html(snapshot, _strategies_payload(), _data_config_payload(), _history_payload()),
-    )
+    try:
+        platform = _get_platform()
+        snapshot = platform.dashboard_service.snapshot(
+            analysis_engine=platform.analysis_engine,
+            search_engine=platform.search_engine,
+            monitoring_engine=platform.monitoring_engine,
+            execution_engine=platform.execution_engine,
+            report_engine=platform.report_engine,
+            backtest_engine=platform.backtest_engine,
+        )
+        return HTMLResponse(
+            content=_render_dashboard_html(snapshot, _strategies_payload(), _data_config_payload(), _history_payload()),
+        )
+    except Exception as exc:
+        return HTMLResponse(
+            content=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Supreme Zone Platform</title><style>body{{font-family:system-ui;background:#f8fafc;color:#0f172a;padding:24px}}.card{{max-width:900px;margin:0 auto;background:#fff;border:1px solid #dbe4f0;border-radius:20px;padding:20px;box-shadow:0 16px 40px rgba(15,23,42,.08)}}pre{{white-space:pre-wrap;word-break:break-word;background:#f1f5f9;padding:16px;border-radius:14px}}</style></head><body><div class='card'><h1>Supreme Zone Platform</h1><p>Dashboard fallback is active because the live page hit an error.</p><pre>{escape(str(exc))}</pre><p>Open /healthz for a quick status check.</p></div></body></html>""",
+            status_code=200,
+        )
 
 
 @app.get("/healthz")
@@ -611,7 +632,6 @@ async def healthz() -> dict[str, Any]:
 @app.get("/api/status")
 async def api_status() -> dict[str, Any]:
     platform = _get_platform()
-    bootstrap_result = getattr(app.state, "bootstrap_result", None)
     snapshot = platform.dashboard_service.snapshot(
         analysis_engine=platform.analysis_engine,
         search_engine=platform.search_engine,
@@ -684,19 +704,21 @@ async def api_strategy_deactivate() -> dict[str, Any]:
 
 
 @app.post("/api/data/config")
-async def api_data_config(
-    source: str = Form("mt5"),
-    symbols: str = Form(""),
-    timeframes: str = Form(""),
-    bars: int = Form(500),
-    api_key: str | None = Form(None),
-    base_url: str | None = Form(None),
-) -> dict[str, Any]:
+async def api_data_config(request: Request) -> dict[str, Any]:
     platform = _get_platform()
+    payload = await request.json()
+    source = str(payload.get("source", "mt5"))
+    symbols = str(payload.get("symbols", ""))
+    timeframes = str(payload.get("timeframes", ""))
+    bars = int(payload.get("bars", 500) or 500)
+    api_key = payload.get("api_key")
+    base_url = payload.get("base_url")
     parsed_symbols = tuple(item.strip().upper() for item in symbols.split(",") if item.strip())
     parsed_timeframes = tuple(item.strip().upper() for item in timeframes.split(",") if item.strip())
     if parsed_symbols or parsed_timeframes:
         _apply_runtime_market_config(parsed_symbols or tuple(platform.data_engine.symbol_manager.symbols), parsed_timeframes or tuple(platform.data_engine.timeframe_manager.supported), bars)
+    if api_key == "***":
+        api_key = None
     platform.data_engine.set_data_source(source, api_key=api_key, base_url=base_url)
     app.state.runtime["data_source"] = platform.data_engine.data_source
     app.state.runtime["bars"] = bars
