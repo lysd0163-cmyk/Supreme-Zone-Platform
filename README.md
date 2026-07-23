@@ -2,11 +2,18 @@
 
 Institutional trading platform foundation.
 
-## Phase 0 — System Architecture
+## Run locally
 
-This repository begins with the project foundation:
-- project structure
-- configuration
-- logging
-- plugin system
-- strategy management
+```bash
+pip install .
+python main.py
+```
+
+## Deploy as web service
+
+Use the Render blueprint in `render.yaml`.
+The web entrypoint is:
+
+```bash
+uvicorn supreme_zone.webapp:app --host 0.0.0.0 --port $PORT
+```
