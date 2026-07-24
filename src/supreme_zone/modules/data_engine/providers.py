@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 _DEFAULT_TWELVE_DATA_BASE_URL = "https://api.twelvedata.com/time_series"
+_INVALID_API_KEY_MARKERS = {"", "***", "present", "missing", "none", "null"}
 
 
 class MarketDataProvider(Protocol):
@@ -86,10 +87,12 @@ class TwelveDataMarketDataProvider:
     name: str = "twelve_data"
 
     def fetch_rates(self, request: MarketDataRequest) -> list[dict[str, object]]:
-        if not self.api_key:
+        api_key = str(self.api_key or "").strip()
+        if api_key.lower() in _INVALID_API_KEY_MARKERS:
             fallback = os.getenv("TWELVE_DATA_API_KEY", "").strip()
             if not fallback:
                 raise RuntimeError("TWELVE_DATA_API_KEY is missing")
+            api_key = fallback
             self.api_key = fallback
 
         interval = self._map_interval(request.timeframe)
@@ -99,7 +102,7 @@ class TwelveDataMarketDataProvider:
             "interval": interval,
             "outputsize": str(request.bars),
             "format": "JSON",
-            "apikey": self.api_key,
+            "apikey": api_key,
         })
         url = self._resolved_base_url()
         req = Request(f"{url}?{params}", headers={"User-Agent": "SupremeZonePlatform/0.1.0"})
