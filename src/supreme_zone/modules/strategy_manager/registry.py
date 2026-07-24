@@ -18,9 +18,7 @@ class StrategyRegistry:
         strategy = StrategyLoader().load(path)
         self.strategies[strategy.name] = strategy
         self.versions.setdefault(strategy.name, []).append(strategy)
-        if strategy.active or self.active_strategy_name is None:
-            self.active_strategy_name = strategy.name
-            strategy.active = True
+        self._activate(strategy.name)
         return strategy
 
     def set_active(self, name: str) -> StrategyDefinition:
@@ -28,9 +26,15 @@ class StrategyRegistry:
             strategy = self.strategies[name]
         except KeyError as exc:
             raise StrategyError(f"Unknown strategy: {name}") from exc
-        self.active_strategy_name = name
-        strategy.active = True
+        self._activate(name)
         return strategy
+
+    def _activate(self, name: str) -> None:
+        for item in self.strategies.values():
+            item.active = False
+        self.active_strategy_name = name
+        if name in self.strategies:
+            self.strategies[name].active = True
 
     def clear_active(self) -> None:
         self.active_strategy_name = None
