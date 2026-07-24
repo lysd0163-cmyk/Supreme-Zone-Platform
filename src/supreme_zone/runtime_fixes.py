@@ -5,9 +5,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
 
 _RUNTIME_CONFIG_FILENAME = "data_config.json"
 _STRATEGY_STATE_FILENAME = "strategy_state.json"
@@ -42,13 +39,13 @@ def _strategy_state_path(platform) -> Path:
     return _storage_root(platform) / "cache" / _STRATEGY_STATE_FILENAME
 
 
-def _persist_runtime_config(platform, payload: dict[str, Any]) -> None:
+def save_runtime_config(platform, payload: dict[str, Any]) -> None:
     path = _runtime_config_path(platform)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _load_runtime_config(platform) -> dict[str, Any] | None:
+def load_runtime_config(platform) -> dict[str, Any] | None:
     path = _runtime_config_path(platform)
     if not path.exists():
         return None
@@ -59,13 +56,13 @@ def _load_runtime_config(platform) -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else None
 
 
-def _persist_strategy_state(platform, payload: dict[str, Any]) -> None:
+def save_strategy_state(platform, payload: dict[str, Any]) -> None:
     path = _strategy_state_path(platform)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _load_strategy_state(platform) -> dict[str, Any] | None:
+def load_strategy_state(platform) -> dict[str, Any] | None:
     path = _strategy_state_path(platform)
     if not path.exists():
         return None
@@ -76,40 +73,7 @@ def _load_strategy_state(platform) -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else None
 
 
-def _restore_strategy_state(platform) -> None:
-    try:
-        from .webapp import app
-    except Exception:
-        app = None
-
-    if app is not None and getattr(app.state, "strategy_restored", False):
-        return
-
-    saved = _load_strategy_state(platform)
-    if not saved:
-        return
-
-    strategy_path = saved.get("strategy_path")
-    if not strategy_path:
-        return
-
-    path = Path(str(strategy_path))
-    if not path.exists():
-        return
-
-    manager = platform.analysis_engine.strategy_manager
-    try:
-        strategy = manager.add_strategy_file(path)
-        if bool(saved.get("active", True)):
-            manager.activate_strategy(strategy.name)
-        if app is not None:
-            app.state.strategy_restored = True
-            app.state.runtime["strategy_path"] = str(path)
-    except Exception:
-        return
-
-
-def _apply_saved_config(platform, payload: dict[str, Any]) -> None:
+def apply_runtime_config(platform, payload: dict[str, Any]) -> None:
     engine = platform.data_engine
     source = str(payload.get("source") or engine.data_source or "mt5").strip().lower() or "mt5"
     symbols = _coerce_items(payload.get("symbols"))
@@ -121,7 +85,12 @@ def _apply_saved_config(platform, payload: dict[str, Any]) -> None:
         bars_value = None
     api_key = payload.get("api_key")
     base_url = payload.get("base_url")
-    engine.set_data_source(source, api_key=str(api_key).strip() if api_key not in (None, "") else None, base_url=str(base_url).strip() if base_url not in (None, "") else None)
+
+    engine.set_data_source(
+        source,
+        api_key=str(api_key).strip() if api_key not in (None, "") else None,
+        base_url=str(base_url).strip() if base_url not in (None, "") else None,
+    )
     if symbols or timeframes:
         from .webapp import _apply_runtime_market_config
 
@@ -142,136 +111,36 @@ def _apply_saved_config(platform, payload: dict[str, Any]) -> None:
         pass
 
 
-def install_webapp_runtime_fixes() -> None:
-    from .webapp import app
-
-    if getattr(app.state, "runtime_fixes_installed", False):
-        return
-    app.state.runtime_fixes_installed = True
-
-    @app.middleware("http")
-    async def _runtime_config_middleware(request: Request, call_next):
-        path = request.url.path
-        method = request.method.upper()
-
+def restore_persisted_state(platform) -> None:
+    saved_config = load_runtime_config(platform)
+    if saved_config:
         try:
-            from .webapp import _get_platform
-
-            platform = _get_platform()
+            apply_runtime_config(platform, saved_config)
         except Exception:
-            platform = None
+            pass
 
-        if platform is not None and path in {"/api/strategies", "/api/run", "/api/status", "/api/dashboard"}:
-            _restore_strategy_state(platform)
+    saved_strategy = load_strategy_state(platform)
+    if not saved_strategy:
+        return
 
-        if platform is not None and path in {"/api/data/config", "/api/data/sync"}:
-            saved = _load_runtime_config(platform)
-            if saved:
-                try:
-                    _apply_saved_config(platform, saved)
-                except Exception:
-                    pass
+    strategy_path = saved_strategy.get("strategy_path")
+    if not strategy_path:
+        return
 
-        if platform is not None and path == "/api/data/config" and method == "POST":
-            try:
-                payload = await request.json()
-            except Exception:
-                payload = {}
-            if not isinstance(payload, dict):
-                payload = {}
+    path = Path(str(strategy_path))
+    if not path.exists():
+        return
 
-            engine = platform.data_engine
-            source = str(payload.get("source") or engine.data_source or "mt5").strip().lower() or "mt5"
-            symbols = _coerce_items(payload.get("symbols"))
-            timeframes = _coerce_items(payload.get("timeframes"))
-            bars_raw = payload.get("bars")
-            try:
-                bars_value = int(bars_raw) if bars_raw not in (None, "") else None
-            except Exception:
-                bars_value = None
-            api_key = payload.get("api_key")
-            base_url = payload.get("base_url")
+    manager = platform.analysis_engine.strategy_manager
+    try:
+        strategy = manager.add_strategy_file(path)
+        if bool(saved_strategy.get("active", True)):
+            manager.activate_strategy(strategy.name)
+        try:
+            from .webapp import app
 
-            engine.set_data_source(
-                source,
-                api_key=str(api_key).strip() if api_key not in (None, "") else None,
-                base_url=str(base_url).strip() if base_url not in (None, "") else None,
-            )
-            if symbols or timeframes:
-                from .webapp import _apply_runtime_market_config
-
-                _apply_runtime_market_config(
-                    symbols or tuple(engine.symbol_manager.symbols or engine.settings.symbols),
-                    timeframes or tuple(engine.timeframe_manager.supported or engine.settings.timeframes),
-                    bars_value,
-                )
-            engine.status.data_source = engine.data_source
-            try:
-                from .webapp import app as web_app
-
-                web_app.state.runtime["data_source"] = engine.data_source
-                web_app.state.runtime["bars"] = bars_value
-                web_app.state.runtime["symbols"] = symbols
-                web_app.state.runtime["timeframes"] = timeframes
-            except Exception:
-                pass
-
-            _persist_runtime_config(
-                platform,
-                {
-                    "source": engine.data_source,
-                    "symbols": list(symbols or engine.symbol_manager.symbols or engine.settings.symbols),
-                    "timeframes": list(timeframes or engine.timeframe_manager.supported or engine.settings.timeframes),
-                    "bars": bars_value or engine.settings.market.history_window_candles,
-                    "api_key": str(api_key).strip() if api_key not in (None, "") else None,
-                    "base_url": str(base_url).strip() if base_url not in (None, "") else engine.twelve_data_base_url,
-                },
-            )
-
-            from .webapp import _data_config_payload
-
-            return JSONResponse({"ok": True, "data_config": _data_config_payload()})
-
-        if platform is not None and path == "/api/strategies/upload" and method == "POST":
-            # Let the upload endpoint execute, then persist the active strategy if it succeeds.
-            response = await call_next(request)
-            try:
-                if response.status_code < 400:
-                    active = platform.analysis_engine.strategy_manager.get_active_strategy()
-                    if active is not None:
-                        _persist_strategy_state(
-                            platform,
-                            {
-                                "strategy_path": str(active.source_path),
-                                "strategy_name": active.name,
-                                "strategy_version": active.version,
-                                "active": bool(active.active),
-                            },
-                        )
-                        try:
-                            from .webapp import app as web_app
-
-                            web_app.state.strategy_restored = True
-                            web_app.state.runtime["strategy_path"] = str(active.source_path)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-            return response
-
-        if platform is not None and path == "/api/strategies/deactivate" and method == "POST":
-            response = await call_next(request)
-            try:
-                _persist_strategy_state(platform, {"strategy_path": None, "active": False})
-            except Exception:
-                pass
-            return response
-
-        if platform is not None and path == "/api/data/sync" and method == "POST":
-            engine = platform.data_engine
-            if engine.data_source == "twelve_data" and not engine.twelve_data_api_key:
-                return JSONResponse({"detail": "Twelve Data API key is missing"}, status_code=400)
-            if not engine.symbol_manager.symbols:
-                return JSONResponse({"detail": "No symbols configured for data sync"}, status_code=400)
-
-        return await call_next(request)
+            app.state.runtime["strategy_path"] = str(path)
+        except Exception:
+            pass
+    except Exception:
+        return
