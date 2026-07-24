@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
+
 from ..analysis_engine.models import AnalysisReport
 from ..entry_engine.models import EntrySignal
 from ..execution_engine.models import TradeResult
@@ -25,7 +27,7 @@ class ReportEngine:
         markdown_path = self.output_dir / f"{base_name}.md"
         summary_path = self.output_dir / f"{base_name}_summary.txt"
 
-        payload = self._serialize(bundle)
+        payload = jsonable_encoder(self._serialize(bundle))
         json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         markdown_path.write_text(self._render_markdown(payload), encoding="utf-8")
         summary_path.write_text(self._render_summary(payload), encoding="utf-8")
