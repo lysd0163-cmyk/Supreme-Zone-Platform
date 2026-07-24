@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -85,6 +87,10 @@ class TwelveDataMarketDataProvider:
     api_key: str
     base_url: str = _DEFAULT_TWELVE_DATA_BASE_URL
     name: str = "twelve_data"
+    min_request_interval_seconds: float = 1.0
+    max_retries: int = 3
+    backoff_seconds: float = 1.5
+    _last_request_at: float = 0.0
 
     def fetch_rates(self, request: MarketDataRequest) -> list[dict[str, object]]:
         api_key = str(self.api_key or "").strip()
@@ -106,27 +112,51 @@ class TwelveDataMarketDataProvider:
         })
         url = self._resolved_base_url()
         req = Request(f"{url}?{params}", headers={"User-Agent": "SupremeZonePlatform/0.1.0"})
-        with urlopen(req, timeout=30) as response:  # nosec B310 - outbound API client
-            payload = json.loads(response.read().decode("utf-8"))
 
-        if isinstance(payload, dict) and str(payload.get("status", "")).lower() == "error":
-            message = str(payload.get("message") or payload.get("code") or "unknown error")
-            raise RuntimeError(f"Twelve Data returned an error for {symbol} {interval}: {message}")
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            self._throttle()
+            try:
+                with urlopen(req, timeout=30) as response:  # nosec B310 - outbound API client
+                    payload = json.loads(response.read().decode("utf-8"))
+                self._last_request_at = time.monotonic()
+                if isinstance(payload, dict) and str(payload.get("status", "")).lower() == "error":
+                    message = str(payload.get("message") or payload.get("code") or "unknown error")
+                    raise RuntimeError(f"Twelve Data returned an error for {symbol} {interval}: {message}")
+                values = payload.get("values", []) if isinstance(payload, dict) else []
+                bars: list[dict[str, object]] = []
+                for item in reversed(values):
+                    bars.append(
+                        {
+                            "time": self._parse_time(str(item.get("datetime") or item.get("date") or item.get("time") or datetime.now(timezone.utc).isoformat())),
+                            "open": float(item.get("open", 0.0)),
+                            "high": float(item.get("high", 0.0)),
+                            "low": float(item.get("low", 0.0)),
+                            "close": float(item.get("close", 0.0)),
+                            "tick_volume": int(float(item.get("volume", item.get("tick_volume", 0)) or 0)),
+                        }
+                    )
+                return bars
+            except HTTPError as exc:
+                last_error = exc
+                if exc.code == 429 and attempt < self.max_retries - 1:
+                    time.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                raise RuntimeError(f"Twelve Data HTTP {exc.code} for {symbol} {interval}") from exc
+            except URLError as exc:
+                last_error = exc
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                raise RuntimeError(f"Twelve Data request failed for {symbol} {interval}: {exc.reason}") from exc
+        if last_error is not None:
+            raise RuntimeError(f"Twelve Data request failed for {symbol} {interval}") from last_error
+        return []
 
-        values = payload.get("values", []) if isinstance(payload, dict) else []
-        bars: list[dict[str, object]] = []
-        for item in reversed(values):
-            bars.append(
-                {
-                    "time": self._parse_time(str(item.get("datetime") or item.get("date") or item.get("time") or datetime.now(timezone.utc).isoformat())),
-                    "open": float(item.get("open", 0.0)),
-                    "high": float(item.get("high", 0.0)),
-                    "low": float(item.get("low", 0.0)),
-                    "close": float(item.get("close", 0.0)),
-                    "tick_volume": int(float(item.get("volume", item.get("tick_volume", 0)) or 0)),
-                }
-            )
-        return bars
+    def _throttle(self) -> None:
+        elapsed = time.monotonic() - self._last_request_at
+        if elapsed < self.min_request_interval_seconds:
+            time.sleep(self.min_request_interval_seconds - elapsed)
 
     def _resolved_base_url(self) -> str:
         candidate = str(self.base_url or "").strip()
