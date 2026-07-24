@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from asynccontextmanager import asynccontextmanager
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
 from html import escape
@@ -183,14 +183,14 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
     api_key_status = "محفوظ" if data_config.get("api_key_present") else "غير محفوظ"
     base_url = escape(str(data_config.get("base_url", "https://api.twelvedata.com/time_series")))
 
-    return f"""<!doctype html>
+    html = """<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Supreme Zone Platform</title>
   <style>
-    :root {{
+    :root {
       color-scheme: dark;
       --bg: #07111f;
       --bg-2: #0b1728;
@@ -206,9 +206,9 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       --bad: #ef4444;
       --shadow: 0 30px 80px rgba(0,0,0,.38);
       --radius: 26px;
-    }}
-    * {{ box-sizing:border-box; }}
-    html, body {{
+    }
+    * { box-sizing:border-box; }
+    html, body {
       margin:0;
       padding:0;
       min-height:100%;
@@ -218,10 +218,10 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
         linear-gradient(180deg, var(--bg), var(--bg-2));
       color:var(--text);
       font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }}
-    body {{ min-height:100vh; }}
-    .shell {{ max-width: 1680px; margin:0 auto; padding: 18px; }}
-    .hero {{
+    }
+    body { min-height:100vh; }
+    .shell { max-width: 1680px; margin:0 auto; padding: 18px; }
+    .hero {
       position:relative;
       overflow:hidden;
       border:1px solid var(--border);
@@ -229,8 +229,8 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       box-shadow: var(--shadow);
       border-radius: 32px;
       padding: 24px;
-    }}
-    .hero::before {{
+    }
+    .hero::before {
       content:"";
       position:absolute;
       inset:-80px -160px auto auto;
@@ -239,8 +239,8 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       background: radial-gradient(circle, rgba(110,168,255,.18), transparent 68%);
       filter: blur(10px);
       pointer-events:none;
-    }}
-    .top {{
+    }
+    .top {
       display:flex;
       justify-content:space-between;
       gap:18px;
@@ -248,14 +248,14 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       align-items:flex-start;
       position:relative;
       z-index:1;
-    }}
-    .brand {{
+    }
+    .brand {
       display:flex;
       flex-direction:column;
       gap:10px;
       max-width: 900px;
-    }}
-    .badge {{
+    }
+    .badge {
       display:inline-flex;
       align-items:center;
       gap:8px;
@@ -267,32 +267,32 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       color: #cfe2ff;
       font-size:12px;
       letter-spacing:.3px;
-    }}
-    .title {{
+    }
+    .title {
       font-size: clamp(30px, 4.5vw, 56px);
       line-height:1.02;
       margin:0;
       letter-spacing:-.03em;
-    }}
-    .subtitle {{
+    }
+    .subtitle {
       color:var(--muted);
       font-size: 15px;
       line-height:1.8;
       max-width: 920px;
-    }}
-    .hero-actions {{
+    }
+    .hero-actions {
       display:flex;
       flex-direction:column;
       align-items:flex-start;
       gap:12px;
       min-width: 320px;
-    }}
-    .toolbar {{
+    }
+    .toolbar {
       display:flex;
       flex-wrap:wrap;
       gap:10px;
-    }}
-    .btn {{
+    }
+    .btn {
       appearance:none;
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
@@ -303,23 +303,23 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       cursor:pointer;
       transition: transform .15s ease, border-color .15s ease, background .15s ease;
       box-shadow: 0 8px 24px rgba(0,0,0,.18);
-    }}
-    .btn:hover {{ transform: translateY(-1px); border-color: rgba(110,168,255,.45); }}
-    .btn.primary {{
+    }
+    .btn:hover { transform: translateY(-1px); border-color: rgba(110,168,255,.45); }
+    .btn.primary {
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
       border-color: transparent;
       color: #fff;
-    }}
-    .btn.ghost {{
+    }
+    .btn.ghost {
       background: rgba(255,255,255,.02);
-    }}
-    .status-row {{
+    }
+    .status-row {
       display:flex;
       flex-wrap:wrap;
       gap:10px;
       margin-top: 14px;
-    }}
-    .chip {{
+    }
+    .chip {
       display:inline-flex;
       align-items:center;
       gap:8px;
@@ -330,31 +330,31 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       color:var(--text);
       font-size:13px;
       backdrop-filter: blur(10px);
-    }}
-    .chip strong {{ font-size:14px; }}
-    .grid-kpi {{
+    }
+    .chip strong { font-size:14px; }
+    .grid-kpi {
       display:grid;
       grid-template-columns: repeat(6, minmax(0, 1fr));
       gap:14px;
       margin-top:18px;
-    }}
-    .kpi {{
+    }
+    .kpi {
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
       border-radius: 22px;
       padding: 16px;
       box-shadow: var(--shadow);
       min-height: 96px;
-    }}
-    .kpi .label {{ color: var(--muted); font-size: 12px; margin-bottom: 10px; }}
-    .kpi .value {{ font-size: clamp(20px, 2vw, 30px); font-weight: 900; letter-spacing: -.03em; }}
-    .tabs {{
+    }
+    .kpi .label { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .kpi .value { font-size: clamp(20px, 2vw, 30px); font-weight: 900; letter-spacing: -.03em; }
+    .tabs {
       display:flex;
       gap:10px;
       flex-wrap:wrap;
       margin: 18px 0;
-    }}
-    .tab {{
+    }
+    .tab {
       padding: 11px 16px;
       border-radius: 999px;
       border:1px solid var(--border);
@@ -362,54 +362,54 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       color: var(--text);
       cursor:pointer;
       font-weight:800;
-    }}
-    .tab.active {{
+    }
+    .tab.active {
       background: linear-gradient(135deg, rgba(110,168,255,.95), rgba(139,92,246,.95));
       border-color: transparent;
       color:#fff;
-    }}
-    .panel {{ display:none; }}
-    .panel.active {{ display:block; }}
-    .card {{
+    }
+    .panel { display:none; }
+    .panel.active { display:block; }
+    .card {
       border:1px solid var(--border);
       background: var(--surface);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       padding: 18px;
       backdrop-filter: blur(14px);
-    }}
-    .card + .card {{ margin-top:18px; }}
-    .card-head {{
+    }
+    .card + .card { margin-top:18px; }
+    .card-head {
       display:flex;
       justify-content:space-between;
       gap:12px;
       align-items:flex-start;
       flex-wrap:wrap;
       margin-bottom: 14px;
-    }}
-    h2 {{
+    }
+    h2 {
       margin:0;
       font-size: 20px;
       letter-spacing:-.02em;
-    }}
-    .hint {{ color: var(--muted); font-size: 13px; line-height:1.8; }}
-    .grid {{
+    }
+    .hint { color: var(--muted); font-size: 13px; line-height:1.8; }
+    .grid {
       display:grid;
       gap:14px;
       grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    }}
-    .field-grid {{
+    }
+    .field-grid {
       display:grid;
       gap:12px;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    }}
-    label {{
+    }
+    label {
       display:block;
       font-size: 12px;
       color: var(--muted);
       margin-bottom: 8px;
-    }}
-    input, select, textarea {{
+    }
+    input, select, textarea {
       width:100%;
       padding: 13px 14px;
       border-radius: 15px;
@@ -417,23 +417,23 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       background: rgba(8,14,24,.88);
       color: var(--text);
       outline:none;
-    }}
-    input:focus, select:focus, textarea:focus {{
+    }
+    input:focus, select:focus, textarea:focus {
       border-color: rgba(110,168,255,.5);
       box-shadow: 0 0 0 4px rgba(110,168,255,.12);
-    }}
-    .item {{
+    }
+    .item {
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
       border-radius: 20px;
       padding: 14px;
-    }}
-    .item strong {{ display:block; margin-bottom:8px; }}
-    .list {{
+    }
+    .item strong { display:block; margin-bottom:8px; }
+    .list {
       display:grid;
       gap:12px;
-    }}
-    .pill {{
+    }
+    .pill {
       display:inline-flex;
       align-items:center;
       gap:6px;
@@ -445,55 +445,55 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       margin-inline-end:6px;
       margin-bottom:6px;
       border:1px solid rgba(110,168,255,.22);
-    }}
-    .pill.good {{ background: rgba(34,197,94,.12); color:#b8f3cd; border-color: rgba(34,197,94,.22); }}
-    .pill.warn {{ background: rgba(245,158,11,.12); color:#fde2b1; border-color: rgba(245,158,11,.22); }}
-    .pill.bad {{ background: rgba(239,68,68,.12); color:#fecaca; border-color: rgba(239,68,68,.22); }}
-    .muted {{ color: var(--muted); }}
-    .mini {{ font-size:12px; color:var(--muted); line-height:1.65; }}
-    .table {{
+    }
+    .pill.good { background: rgba(34,197,94,.12); color:#b8f3cd; border-color: rgba(34,197,94,.22); }
+    .pill.warn { background: rgba(245,158,11,.12); color:#fde2b1; border-color: rgba(245,158,11,.22); }
+    .pill.bad { background: rgba(239,68,68,.12); color:#fecaca; border-color: rgba(239,68,68,.22); }
+    .muted { color: var(--muted); }
+    .mini { font-size:12px; color:var(--muted); line-height:1.65; }
+    .table {
       width:100%;
       border-collapse:collapse;
       overflow:hidden;
       border-radius:18px;
       border:1px solid var(--border);
-    }}
-    .table th, .table td {{
+    }
+    .table th, .table td {
       padding: 12px 10px;
       border-bottom:1px solid rgba(148,163,184,.12);
       text-align:right;
       font-size: 13px;
-    }}
-    .table th {{
+    }
+    .table th {
       color: var(--muted);
       font-size:12px;
       font-weight:700;
       background: rgba(255,255,255,.02);
-    }}
-    .table tr:last-child td {{ border-bottom:none; }}
-    .footer {{
+    }
+    .table tr:last-child td { border-bottom:none; }
+    .footer {
       color: var(--muted);
       text-align:center;
       font-size:12px;
       padding: 18px 0 8px;
-    }}
-    .two-col {{
+    }
+    .two-col {
       display:grid;
       gap:14px;
       grid-template-columns: 1.2fr .8fr;
-    }}
-    @media (max-width: 1100px) {{
-      .grid-kpi {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      .two-col {{ grid-template-columns: 1fr; }}
-      .hero-actions {{ width:100%; min-width:0; }}
-    }}
-    @media (max-width: 640px) {{
-      .shell {{ padding:12px; }}
-      .hero {{ padding:18px; border-radius:24px; }}
-      .grid-kpi {{ grid-template-columns: 1fr 1fr; }}
-      .toolbar {{ width:100%; }}
-      .btn {{ flex:1 1 auto; }}
-    }}
+    }
+    @media (max-width: 1100px) {
+      .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .two-col { grid-template-columns: 1fr; }
+      .hero-actions { width:100%; min-width:0; }
+    }
+    @media (max-width: 640px) {
+      .shell { padding:12px; }
+      .hero { padding:18px; border-radius:24px; }
+      .grid-kpi { grid-template-columns: 1fr 1fr; }
+      .toolbar { width:100%; }
+      .btn { flex:1 1 auto; }
+    }
   </style>
 </head>
 <body>
@@ -698,35 +698,35 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
     <div class="footer">Supreme Zone Platform • modern dashboard build • RTL support</div>
   </div>
 
-  <script id="app-data" type="application/json">{payload}</script>
+  <script id="app-data" type="application/json">__PAYLOAD__</script>
   <script>
     const APP = JSON.parse(document.getElementById('app-data').textContent);
     const $ = (id) => document.getElementById(id);
-    const esc = (value) => String(value ?? '').replace(/[&<>"]'/g, (ch) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch]));
+    const esc = (value) => String(value ?? '').replace(/[&<>\"]'/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const fmtZone = (z) => !z
       ? '<span class="muted">لا توجد</span>'
-      : `<div><span class="pill">${{esc(z.side)}}</span><span class="pill">${{esc(z.timeframe)}}</span><span class="pill">${{esc(z.score)}}</span></div><div class="mini">${{esc(z.lower)}} → ${{esc(z.upper)}}</div><div class="mini">${{esc(z.note || '')}}</div>`;
-    const fmtObj = (obj) => `<pre>${{esc(JSON.stringify(obj, null, 2))}}</pre>`;
+      : `<div><span class="pill">${esc(z.side)}</span><span class="pill">${esc(z.timeframe)}</span><span class="pill">${esc(z.score)}</span></div><div class="mini">${esc(z.lower)} → ${esc(z.upper)}</div><div class="mini">${esc(z.note || '')}</div>`;
+    const fmtObj = (obj) => `<pre>${esc(JSON.stringify(obj, null, 2))}</pre>`;
 
-    function setActivePanel(panelId) {{
+    function setActivePanel(panelId) {
       document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
       document.getElementById(panelId).classList.add('active');
       document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.panel === panelId));
-    }}
+    }
 
     document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => setActivePanel(tab.dataset.panel)));
 
-    function renderAll() {{
-      const snapshot = APP.snapshot || {{}};
-      const analysis = snapshot.analysis || {{}};
-      const monitoring = snapshot.monitoring || {{}};
-      const execution = snapshot.execution || {{}};
-      const reports = snapshot.reports || {{}};
-      const backtest = snapshot.backtest || {{}};
-      const search = snapshot.search || {{}};
-      const settings = APP.data_config || {{}};
-      const strategies = APP.strategies || {{}};
-      const history = APP.history || {{}}; 
+    function renderAll() {
+      const snapshot = APP.snapshot || {};
+      const analysis = snapshot.analysis || {};
+      const monitoring = snapshot.monitoring || {};
+      const execution = snapshot.execution || {};
+      const reports = snapshot.reports || {};
+      const backtest = snapshot.backtest || {};
+      const search = snapshot.search || {};
+      const settings = APP.data_config || {};
+      const strategies = APP.strategies || {};
+      const history = APP.history || {}; 
 
       $('bootReady').textContent = APP.boot?.ready ? 'جاهز' : 'غير جاهز';
       $('activeStrategy').textContent = strategies.active?.name || 'N/A';
@@ -748,31 +748,31 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
         ['نتائج التنفيذ', execution.results || 0],
         ['عدد الملفات', (reports.files || []).length],
         ['الباك تست', backtest.runs || 0],
-      ].map((item) => `<div class="item"><div class="mini">${{esc(item[0])}}</div><div style="font-size:20px;font-weight:900;margin-top:6px;">${{esc(String(item[1]))}}</div></div>`).join('');
+      ].map((item) => `<div class="item"><div class="mini">${esc(item[0])}</div><div style="font-size:20px;font-weight:900;margin-top:6px;">${esc(String(item[1]))}</div></div>`).join('');
 
       $('lastGenerated').textContent = snapshot.generated_at || '-';
       $('lastError').textContent = search.last_error || monitoring.last_error || backtest.last_error || 'لا يوجد';
-      $('currentAnalysis').textContent = `${{analysis.symbol || 'N/A'}} • ${{analysis.strategy_name || 'N/A'}}`;
+      $('currentAnalysis').textContent = `${analysis.symbol || 'N/A'} • ${analysis.strategy_name || 'N/A'}`;
 
       $('buyZoneBox').innerHTML = fmtZone(analysis.buy_zone);
       $('sellZoneBox').innerHTML = fmtZone(analysis.sell_zone);
-      $('analysisFrames').innerHTML = (analysis.frames || []).map((frame) => `<div class="item"><strong>${{esc(frame.timeframe)}} • ${{esc(frame.symbol || '')}}</strong>${{fmtObj(frame)}}</div>`).join('') || '<div class="item">لا توجد تحليلات بعد</div>';
+      $('analysisFrames').innerHTML = (analysis.frames || []).map((frame) => `<div class="item"><strong>${esc(frame.timeframe)} • ${esc(frame.symbol || '')}</strong>${fmtObj(frame)}</div>`).join('') || '<div class="item">لا توجد تحليلات بعد</div>';
 
       $('activeStrategyCard').innerHTML = strategies.active ? fmtObj(strategies.active) : '<span class="muted">لا توجد استراتيجية نشطة</span>';
-      const historyEntries = Object.entries(strategies.history || {{}});
+      const historyEntries = Object.entries(strategies.history || {});
       $('strategyHistory').innerHTML = historyEntries.length
-        ? historyEntries.map(([name, versions]) => `<div class="item"><strong>${{esc(name)}}</strong><div class="mini">الإصدارات: ${{versions.length}}</div>${{versions.map((v) => `<div class="pill">${{esc(v.version)}}${{v.active ? ' • active' : ''}}</div>`).join('')}}</div>`).join('')
+        ? historyEntries.map(([name, versions]) => `<div class="item"><strong>${esc(name)}</strong><div class="mini">الإصدارات: ${versions.length}</div>${versions.map((v) => `<div class="pill">${esc(v.version)}${v.active ? ' • active' : ''}</div>`).join('')}</div>`).join('')
         : '<div class="item">لا يوجد تاريخ استراتيجيات</div>';
 
-      $('reportCount').textContent = `${{reports.artifacts || 0}} ملف تقرير`;
-      $('reportFiles').innerHTML = (reports.files || []).map((file) => `<div class="item">${{esc(file)}}</div>`).join('') || '<div class="item">لا توجد تقارير</div>';
+      $('reportCount').textContent = `${reports.artifacts || 0} ملف تقرير`;
+      $('reportFiles').innerHTML = (reports.files || []).map((file) => `<div class="item">${esc(file)}</div>`).join('') || '<div class="item">لا توجد تقارير</div>';
 
-      $('monitorStatus').innerHTML = `<div class="pill ${{monitoring.running ? 'good' : 'warn'}}">${{monitoring.running ? 'Running' : 'Stopped'}}</div><div class="pill">Cycles: ${{monitoring.cycles || 0}}</div><div class="pill">Invalidations: ${{monitoring.invalidations || 0}}</div><div class="pill">Reanalyses: ${{monitoring.reanalyses || 0}}</div>`;
-      $('watchlistBox').innerHTML = (monitoring.watchlist || []).map((item) => `<div class="item"><strong>${{esc(item.symbol)}}</strong>${{fmtObj(item)}}</div>`).join('') || '<div class="item">لا توجد عناصر مراقبة</div>';
+      $('monitorStatus').innerHTML = `<div class="pill ${monitoring.running ? 'good' : 'warn'}">${monitoring.running ? 'Running' : 'Stopped'}</div><div class="pill">Cycles: ${monitoring.cycles || 0}</div><div class="pill">Invalidations: ${monitoring.invalidations || 0}</div><div class="pill">Reanalyses: ${monitoring.reanalyses || 0}</div>`;
+      $('watchlistBox').innerHTML = (monitoring.watchlist || []).map((item) => `<div class="item"><strong>${esc(item.symbol)}</strong>${fmtObj(item)}</div>`).join('') || '<div class="item">لا توجد عناصر مراقبة</div>';
 
-      $('syncHistory').innerHTML = (history.sync_runs || []).map((row) => `<div class="item"><strong>${{esc(row.symbol)}} • ${{esc(row.timeframe)}}</strong><div class="mini">${{esc(row.status)}} • ${{esc(row.bars)}} bars • ${{esc(row.created_at)}}</div></div>`).join('') || '<div class="item">لا توجد عمليات مزامنة</div>';
-      $('chartsHistory').innerHTML = (history.charts || []).map((row) => `<div class="item"><strong>${{esc(row.symbol)}} • ${{esc(row.timeframe)}}</strong><div class="mini">${{esc(row.chart_path)}}</div></div>`).join('') || '<div class="item">لا توجد شارتات</div>';
-      $('errorsHistory').innerHTML = (history.errors || []).map((row) => `<div class="item"><strong>${{esc(row.context)}}</strong><div class="mini">${{esc(row.message)}}</div></div>`).join('') || '<div class="item">لا توجد أخطاء</div>';
+      $('syncHistory').innerHTML = (history.sync_runs || []).map((row) => `<div class="item"><strong>${esc(row.symbol)} • ${esc(row.timeframe)}</strong><div class="mini">${esc(row.status)} • ${esc(row.bars)} bars • ${esc(row.created_at)}</div></div>`).join('') || '<div class="item">لا توجد عمليات مزامنة</div>';
+      $('chartsHistory').innerHTML = (history.charts || []).map((row) => `<div class="item"><strong>${esc(row.symbol)} • ${esc(row.timeframe)}</strong><div class="mini">${esc(row.chart_path)}</div></div>`).join('') || '<div class="item">لا توجد شارتات</div>';
+      $('errorsHistory').innerHTML = (history.errors || []).map((row) => `<div class="item"><strong>${esc(row.context)}</strong><div class="mini">${esc(row.message)}</div></div>`).join('') || '<div class="item">لا توجد أخطاء</div>';
 
       $('settingsGrid').innerHTML = [
         ['مصدر البيانات', settings.source || 'mt5'],
@@ -782,82 +782,82 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
         ['API Key', settings.api_key_present ? 'Present' : 'Missing'],
         ['Base URL', settings.base_url || ''],
         ['MT5', settings.mt5_enabled ? 'Enabled' : 'Disabled'],
-      ].map((item) => `<div class="item"><div class="mini">${{esc(item[0])}}</div><div style="font-size:18px;font-weight:800;margin-top:6px;">${{esc(String(item[1]))}}</div></div>`).join('');
+      ].map((item) => `<div class="item"><div class="mini">${esc(item[0])}</div><div style="font-size:18px;font-weight:800;margin-top:6px;">${esc(String(item[1]))}</div></div>`).join('');
 
       $('apiKeyBadge').textContent = settings.api_key_present ? 'API Key محفوظ' : 'API Key غير محفوظ';
-      $('apiKeyBadge').className = `pill ${{settings.api_key_present ? 'good' : 'warn'}}`;
+      $('apiKeyBadge').className = `pill ${settings.api_key_present ? 'good' : 'warn'}`;
       $('apiKeyInput').value = '';
       $('baseUrlInput').value = settings.base_url || '';
       $('barsInput').value = String(settings.bars || 500);
       $('symbolsInput').value = (settings.symbols || []).join(',');
       $('timeframesInput').value = (settings.timeframes || []).join(',');
       $('dataSource').value = settings.source || 'mt5';
-    }}
+    }
 
-    async function postJson(url, body) {{
-      const response = await fetch(url, {{
+    async function postJson(url, body) {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-      }});
+      });
       if (!response.ok) throw new Error(await response.text());
       return response.json();
-    }}
+    }
 
-    document.getElementById('strategyForm').addEventListener('submit', async (event) => {{
+    document.getElementById('strategyForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       const file = document.getElementById('strategyFile').files[0];
       if (!file) return;
       const formData = new FormData();
       formData.append('file', file);
       formData.append('activate', document.getElementById('activateStrategy').value);
-      const response = await fetch('/api/strategies/upload', {{ method: 'POST', body: formData }});
+      const response = await fetch('/api/strategies/upload', { method: 'POST', body: formData });
       if (!response.ok) alert('فشل رفع الاستراتيجية'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('deactivateStrategyBtn').addEventListener('click', async () => {{
-      const response = await fetch('/api/strategies/deactivate', {{ method: 'POST' }});
+    document.getElementById('deactivateStrategyBtn').addEventListener('click', async () => {
+      const response = await fetch('/api/strategies/deactivate', { method: 'POST' });
       if (!response.ok) alert('فشل إيقاف الاستراتيجية'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('dataForm').addEventListener('submit', async (event) => {{
+    document.getElementById('dataForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const payload = {{
+      const payload = {
         source: document.getElementById('dataSource').value,
         symbols: document.getElementById('symbolsInput').value,
         timeframes: document.getElementById('timeframesInput').value,
         bars: Number(document.getElementById('barsInput').value || 500),
         api_key: document.getElementById('apiKeyInput').value,
         base_url: document.getElementById('baseUrlInput').value,
-      }};
+      };
       const response = await postJson('/api/data/config', payload);
       if (!response.ok) alert('فشل حفظ البيانات'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('runBtn').addEventListener('click', async () => {{
-      const response = await fetch('/api/run', {{ method: 'POST' }});
+    document.getElementById('runBtn').addEventListener('click', async () => {
+      const response = await fetch('/api/run', { method: 'POST' });
       if (!response.ok) alert('فشل التشغيل'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('syncBtn').addEventListener('click', async () => {{
-      const response = await fetch('/api/data/sync', {{ method: 'POST' }});
+    document.getElementById('syncBtn').addEventListener('click', async () => {
+      const response = await fetch('/api/data/sync', { method: 'POST' });
       if (!response.ok) alert('فشل جلب البيانات'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('syncNowBtn').addEventListener('click', async () => {{
-      const response = await fetch('/api/data/sync', {{ method: 'POST' }});
+    document.getElementById('syncNowBtn').addEventListener('click', async () => {
+      const response = await fetch('/api/data/sync', { method: 'POST' });
       if (!response.ok) alert('فشل جلب البيانات'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('startMonBtn').addEventListener('click', async () => {{
-      const response = await fetch('/api/monitoring/start', {{ method: 'POST' }});
+    document.getElementById('startMonBtn').addEventListener('click', async () => {
+      const response = await fetch('/api/monitoring/start', { method: 'POST' });
       if (!response.ok) alert('فشل بدء المراقبة'); else window.location.reload();
-    }});
+    });
 
-    document.getElementById('stopMonBtn').addEventListener('click', async () => {{
-      const response = await fetch('/api/monitoring/stop', {{ method: 'POST' }});
+    document.getElementById('stopMonBtn').addEventListener('click', async () => {
+      const response = await fetch('/api/monitoring/stop', { method: 'POST' });
       if (!response.ok) alert('فشل إيقاف المراقبة'); else window.location.reload();
-    }});
+    });
 
     document.getElementById('refreshBtn').addEventListener('click', () => window.location.reload());
     renderAll();
