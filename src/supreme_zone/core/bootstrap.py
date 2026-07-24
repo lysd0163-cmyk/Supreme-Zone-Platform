@@ -26,6 +26,7 @@ from ..modules.report_engine.service import ReportEngine
 from ..modules.search_engine.service import SearchEngine
 from ..modules.strategy_manager.service import StrategyManager
 from ..modules.validation_engine.service import ValidationEngine
+from ..runtime_fixes import install_webapp_runtime_fixes
 
 
 _REQUIRED_STORAGE_DIRS = (
@@ -100,6 +101,8 @@ def bootstrap() -> BootstrapResult:
         backtest_engine=backtest_engine,
         dashboard_service=dashboard_service,
     )
+
+    install_webapp_runtime_fixes()
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
