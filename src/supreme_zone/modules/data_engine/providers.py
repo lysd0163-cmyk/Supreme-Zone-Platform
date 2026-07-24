@@ -16,6 +16,9 @@ except Exception:  # pragma: no cover - optional dependency
     mt5 = None
 
 
+_DEFAULT_TWELVE_DATA_BASE_URL = "https://api.twelvedata.com/time_series"
+
+
 class MarketDataProvider(Protocol):
     name: str
 
@@ -79,7 +82,7 @@ class MT5MarketDataProvider:
 @dataclass(slots=True)
 class TwelveDataMarketDataProvider:
     api_key: str
-    base_url: str = "https://api.twelvedata.com/time_series"
+    base_url: str = _DEFAULT_TWELVE_DATA_BASE_URL
     name: str = "twelve_data"
 
     def fetch_rates(self, request: MarketDataRequest) -> list[dict[str, object]]:
@@ -98,10 +101,14 @@ class TwelveDataMarketDataProvider:
             "format": "JSON",
             "apikey": self.api_key,
         })
-        url = f"{self.base_url}?{params}"
-        req = Request(url, headers={"User-Agent": "SupremeZonePlatform/0.1.0"})
+        url = self._resolved_base_url()
+        req = Request(f"{url}?{params}", headers={"User-Agent": "SupremeZonePlatform/0.1.0"})
         with urlopen(req, timeout=30) as response:  # nosec B310 - outbound API client
             payload = json.loads(response.read().decode("utf-8"))
+
+        if isinstance(payload, dict) and str(payload.get("status", "")).lower() == "error":
+            message = str(payload.get("message") or payload.get("code") or "unknown error")
+            raise RuntimeError(f"Twelve Data returned an error for {symbol} {interval}: {message}")
 
         values = payload.get("values", []) if isinstance(payload, dict) else []
         bars: list[dict[str, object]] = []
@@ -117,6 +124,14 @@ class TwelveDataMarketDataProvider:
                 }
             )
         return bars
+
+    def _resolved_base_url(self) -> str:
+        candidate = str(self.base_url or "").strip()
+        if not candidate:
+            return _DEFAULT_TWELVE_DATA_BASE_URL
+        if not candidate.startswith(("http://", "https://")):
+            return _DEFAULT_TWELVE_DATA_BASE_URL
+        return candidate.rstrip("?&")
 
     @staticmethod
     def _map_interval(timeframe: str) -> str:
