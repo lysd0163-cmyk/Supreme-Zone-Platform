@@ -10,7 +10,6 @@ from .injector import DependencyInjector
 from .logger import configure_logging
 from .platform import SupremeZonePlatform
 from .runtime import BootstrapResult
-from .runtime_fixes import install_webapp_runtime_fixes
 from .runtime_patches import install_runtime_patches
 from .settings import Settings, SettingsManager
 from ..modules.analysis_engine.service import AnalysisEngine
@@ -28,6 +27,7 @@ from ..modules.report_engine.service import ReportEngine
 from ..modules.search_engine.service import SearchEngine
 from ..modules.strategy_manager.service import StrategyManager
 from ..modules.validation_engine.service import ValidationEngine
+from ..runtime_fixes import install_webapp_runtime_fixes
 
 
 _REQUIRED_STORAGE_DIRS = (
