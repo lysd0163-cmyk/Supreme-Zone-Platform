@@ -65,8 +65,11 @@ class SupremeZonePlatform:
         symbols: Iterable[str] | None = None,
     ) -> PlatformRunResult:
         try:
-            self._ensure_connection()
+            profile = self.analysis_engine._profile(strategy_path)
             selected_symbols = tuple(symbols or self.data_engine.settings.symbols or self.data_engine.symbol_manager.symbols)
+            selected_timeframes = tuple(tf.upper().strip() for tf in (profile.timeframes or self.data_engine.timeframe_manager.supported))
+            self._ensure_market_data_ready(selected_symbols, selected_timeframes, bars=bars, minimum_candles=profile.minimum_candles)
+
             analysis_reports: list[AnalysisReport] = []
             search_hits: list[SearchHit] = []
             validations: dict[str, ZoneValidationResult] = {}
@@ -139,17 +142,40 @@ class SupremeZonePlatform:
             self.state.last_error = str(exc)
             raise
 
-    def _ensure_connection(self) -> None:
-        if self.data_engine.settings.mt5.enabled and not self.data_engine.status.mt5_connected:
-            try:
-                self.data_engine.connect_mt5()
-            except Exception:
-                return
-        if self.data_engine.symbol_manager.symbols and self.data_engine.status.mt5_connected:
-            try:
-                self.data_engine.sync_all()
-            except Exception:
-                return
+    def _ensure_market_data_ready(
+        self,
+        symbols: Iterable[str],
+        timeframes: Iterable[str],
+        bars: int | None = None,
+        minimum_candles: int = 500,
+    ) -> None:
+        symbols = tuple(str(symbol).upper().strip() for symbol in symbols if str(symbol).strip())
+        timeframes = tuple(str(timeframe).upper().strip() for timeframe in timeframes if str(timeframe).strip())
+        if not symbols:
+            raise RuntimeError("No symbols configured for analysis")
+        if not timeframes:
+            raise RuntimeError("No timeframes configured for analysis")
+
+        if self.data_engine.data_source == "mt5" and self.data_engine.settings.mt5.enabled and not self.data_engine.status.mt5_connected:
+            self.data_engine.connect_mt5()
+
+        sync_results = self.data_engine.sync_all(bars=bars)
+        errors: list[str] = []
+        for result in sync_results:
+            if str(result.get("status", "")).lower() == "error":
+                errors.append(f"{result.get('symbol')} {result.get('timeframe')}: {result.get('error')}")
+                continue
+            if int(result.get("bars") or 0) < minimum_candles:
+                errors.append(f"{result.get('symbol')} {result.get('timeframe')}: {int(result.get('bars') or 0)} < {minimum_candles}")
+        if errors:
+            raise RuntimeError("Data sync incomplete: " + "; ".join(errors[:4]))
+
+        reader = self.analysis_engine.data_reader
+        for symbol in symbols:
+            for timeframe in timeframes:
+                bars_loaded = reader.load_bars(symbol, timeframe, limit=minimum_candles)
+                if len(bars_loaded) < minimum_candles:
+                    raise RuntimeError(f"Not enough OHLC bars for {symbol} {timeframe}: {len(bars_loaded)} < {minimum_candles}")
 
     def run_forever(self, interval_seconds: int = 60, **kwargs: Any) -> None:
         from time import sleep
