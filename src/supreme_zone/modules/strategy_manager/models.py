@@ -11,4 +11,5 @@ class StrategyDefinition:
     version: str
     source_path: Path
     raw: dict[str, Any] = field(default_factory=dict)
+    interpretation: dict[str, Any] = field(default_factory=dict)
     active: bool = False
