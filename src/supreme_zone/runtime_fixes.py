@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 
 _RUNTIME_CONFIG_FILENAME = "data_config.json"
+_STRATEGY_STATE_FILENAME = "strategy_state.json"
 
 
 def _coerce_items(value: Any) -> tuple[str, ...]:
@@ -27,10 +28,18 @@ def _coerce_items(value: Any) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _runtime_config_path(platform) -> Path:
+def _storage_root(platform) -> Path:
     storage_root = getattr(getattr(platform, "data_engine", None), "storage", None)
     root = getattr(storage_root, "root", Path("storage"))
-    return Path(root) / "cache" / _RUNTIME_CONFIG_FILENAME
+    return Path(root)
+
+
+def _runtime_config_path(platform) -> Path:
+    return _storage_root(platform) / "cache" / _RUNTIME_CONFIG_FILENAME
+
+
+def _strategy_state_path(platform) -> Path:
+    return _storage_root(platform) / "cache" / _STRATEGY_STATE_FILENAME
 
 
 def _persist_runtime_config(platform, payload: dict[str, Any]) -> None:
@@ -48,6 +57,56 @@ def _load_runtime_config(platform) -> dict[str, Any] | None:
     except Exception:
         return None
     return raw if isinstance(raw, dict) else None
+
+
+def _persist_strategy_state(platform, payload: dict[str, Any]) -> None:
+    path = _strategy_state_path(platform)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_strategy_state(platform) -> dict[str, Any] | None:
+    path = _strategy_state_path(platform)
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _restore_strategy_state(platform) -> None:
+    try:
+        from .webapp import app
+    except Exception:
+        app = None
+
+    if app is not None and getattr(app.state, "strategy_restored", False):
+        return
+
+    saved = _load_strategy_state(platform)
+    if not saved:
+        return
+
+    strategy_path = saved.get("strategy_path")
+    if not strategy_path:
+        return
+
+    path = Path(str(strategy_path))
+    if not path.exists():
+        return
+
+    manager = platform.analysis_engine.strategy_manager
+    try:
+        strategy = manager.add_strategy_file(path)
+        if bool(saved.get("active", True)):
+            manager.activate_strategy(strategy.name)
+        if app is not None:
+            app.state.strategy_restored = True
+            app.state.runtime["strategy_path"] = str(path)
+    except Exception:
+        return
 
 
 def _apply_saved_config(platform, payload: dict[str, Any]) -> None:
@@ -101,6 +160,9 @@ def install_webapp_runtime_fixes() -> None:
             platform = _get_platform()
         except Exception:
             platform = None
+
+        if platform is not None and path in {"/api/strategies", "/api/run", "/api/status", "/api/dashboard"}:
+            _restore_strategy_state(platform)
 
         if platform is not None and path in {"/api/data/config", "/api/data/sync"}:
             saved = _load_runtime_config(platform)
@@ -169,6 +231,41 @@ def install_webapp_runtime_fixes() -> None:
             from .webapp import _data_config_payload
 
             return JSONResponse({"ok": True, "data_config": _data_config_payload()})
+
+        if platform is not None and path == "/api/strategies/upload" and method == "POST":
+            # Let the upload endpoint execute, then persist the active strategy if it succeeds.
+            response = await call_next(request)
+            try:
+                if response.status_code < 400:
+                    active = platform.analysis_engine.strategy_manager.get_active_strategy()
+                    if active is not None:
+                        _persist_strategy_state(
+                            platform,
+                            {
+                                "strategy_path": str(active.source_path),
+                                "strategy_name": active.name,
+                                "strategy_version": active.version,
+                                "active": bool(active.active),
+                            },
+                        )
+                        try:
+                            from .webapp import app as web_app
+
+                            web_app.state.strategy_restored = True
+                            web_app.state.runtime["strategy_path"] = str(active.source_path)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            return response
+
+        if platform is not None and path == "/api/strategies/deactivate" and method == "POST":
+            response = await call_next(request)
+            try:
+                _persist_strategy_state(platform, {"strategy_path": None, "active": False})
+            except Exception:
+                pass
+            return response
 
         if platform is not None and path == "/api/data/sync" and method == "POST":
             engine = platform.data_engine
