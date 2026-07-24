@@ -22,6 +22,9 @@ from .symbol_manager import SymbolManager
 from .timeframe_manager import TimeframeManager
 
 
+_DEFAULT_TWELVE_DATA_BASE_URL = "https://api.twelvedata.com/time_series"
+
+
 @dataclass(slots=True)
 class DataEngineStatus:
     mt5_connected: bool = False
@@ -68,8 +71,10 @@ class DataEngine:
         self._connectors: dict[str, MT5Connector] = {}
         self._twelve_data_provider: TwelveDataMarketDataProvider | None = None
         self.data_source = os.getenv("SUPREME_DATA_SOURCE", "mt5").strip().lower() or "mt5"
+        if self.data_source not in {"mt5", "twelve_data"}:
+            self.data_source = "mt5"
         self.twelve_data_api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
-        self.twelve_data_base_url = os.getenv("TWELVE_DATA_BASE_URL", "https://api.twelvedata.com/time_series").strip()
+        self.twelve_data_base_url = self._normalize_base_url(os.getenv("TWELVE_DATA_BASE_URL", _DEFAULT_TWELVE_DATA_BASE_URL))
 
         self.symbol_manager.load(settings.symbols)
         self.timeframe_manager.load(settings.timeframes)
@@ -77,12 +82,23 @@ class DataEngine:
         self.database.initialize()
         self._load_accounts_from_settings()
 
+    @staticmethod
+    def _normalize_base_url(base_url: str | None) -> str:
+        value = str(base_url or "").strip()
+        if not value:
+            return _DEFAULT_TWELVE_DATA_BASE_URL
+        if not value.startswith(("http://", "https://")):
+            return _DEFAULT_TWELVE_DATA_BASE_URL
+        return value.rstrip("?&")
+
     def set_data_source(self, source: str, api_key: str | None = None, base_url: str | None = None) -> None:
-        self.data_source = source.strip().lower() or "mt5"
+        self.data_source = str(source).strip().lower() or "mt5"
+        if self.data_source not in {"mt5", "twelve_data"}:
+            self.data_source = "mt5"
         if api_key is not None:
             self.twelve_data_api_key = api_key.strip()
         if base_url is not None:
-            self.twelve_data_base_url = base_url.strip()
+            self.twelve_data_base_url = self._normalize_base_url(base_url)
         self.status.data_source = self.data_source
         self._twelve_data_provider = None
 
@@ -274,19 +290,37 @@ class DataEngine:
 
     def sync_all(self, bars: int | None = None, use_cache: bool = True, force_refresh: bool = False) -> list[dict[str, Any]]:
         if not self.symbol_manager.symbols:
-            raise DataSyncError("No symbols configured for data sync")
+            return []
         results: list[dict[str, Any]] = []
         for symbol in self.symbol_manager.symbols:
             for timeframe in self.timeframe_manager.supported:
-                results.append(
-                    self.sync_market(
+                try:
+                    results.append(
+                        self.sync_market(
+                            symbol,
+                            timeframe,
+                            bars=bars,
+                            use_cache=use_cache,
+                            force_refresh=force_refresh,
+                        )
+                    )
+                except Exception as exc:
+                    self.database.record_sync_run(
                         symbol,
                         timeframe,
-                        bars=bars,
-                        use_cache=use_cache,
-                        force_refresh=force_refresh,
+                        0,
+                        status="error",
+                        details={"error": str(exc), "data_source": self.data_source},
                     )
-                )
+                    results.append(
+                        {
+                            "symbol": symbol.upper().strip(),
+                            "timeframe": self.timeframe_manager.normalize(timeframe),
+                            "status": "error",
+                            "error": str(exc),
+                            "data_source": self.data_source,
+                        }
+                    )
         return results
 
     def create_live_stream(self, interval_seconds: int | None = None):
