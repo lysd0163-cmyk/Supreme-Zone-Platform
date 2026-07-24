@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
+from asynccontextmanager import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
 from html import escape
@@ -26,11 +26,12 @@ async def lifespan(app: FastAPI):
         "timeframes": tuple(),
         "bars": None,
         "data_source": getattr(bootstrap_result.platform.data_engine, "data_source", "mt5"),
+        "api_key_present": bool(getattr(bootstrap_result.platform.data_engine, "twelve_data_api_key", "")),
     }
     yield
 
 
-app = FastAPI(title="Supreme Zone Platform", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Supreme Zone Platform", version="0.2.0", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -175,80 +176,336 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
     ).replace("</", "<\\/")
 
     active_strategy = escape((strategies.get("active") or {}).get("name", "N/A") or "N/A")
+    active_source = escape(str(data_config.get("source", "mt5")))
     selected_symbols = escape(", ".join(data_config.get("symbols", [])) or "N/A")
     selected_timeframes = escape(", ".join(data_config.get("timeframes", [])) or "N/A")
-    source = escape(str(data_config.get("source", "mt5")))
     bars = escape(str(data_config.get("bars", 500)))
+    api_key_status = "محفوظ" if data_config.get("api_key_present") else "غير محفوظ"
     base_url = escape(str(data_config.get("base_url", "https://api.twelvedata.com/time_series")))
-    api_key_state = "Present" if data_config.get("api_key_present") else "Missing"
-    api_key_state = escape(api_key_state)
 
-    html = """<!doctype html>
+    return f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Supreme Zone Platform Dashboard</title>
+  <title>Supreme Zone Platform</title>
   <style>
-    :root {
-      color-scheme: light;
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --surface-2: #f1f5f9;
-      --border: #dbe4f0;
-      --text: #0f172a;
-      --muted: #64748b;
-      --primary: #2563eb;
-      --primary-weak: #dbeafe;
-      --shadow: 0 16px 40px rgba(15,23,42,.08);
-      --radius: 22px;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { min-height:100vh; }
-    .shell { max-width: 1600px; margin: 0 auto; padding: 18px; }
-    .hero { background: linear-gradient(180deg, #ffffff, #f8fbff); border:1px solid var(--border); border-radius: 28px; box-shadow: var(--shadow); padding: 22px; }
-    .hero-top { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-start; }
-    .title { font-size: clamp(28px, 4vw, 44px); line-height:1.05; margin:0; }
-    .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
-    .status-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
-    .chip { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); font-size:13px; }
-    .chip strong { font-size:14px; }
-    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
-    .btn { border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius: 16px; padding: 12px 16px; font-weight:600; cursor:pointer; box-shadow: 0 4px 12px rgba(15,23,42,.04); }
-    .btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
-    .btn.ghost { background: var(--surface-2); }
-    .card { background: var(--surface); border:1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; margin-top:18px; }
-    .card h2 { margin:0 0 12px 0; font-size:20px; }
-    .grid { display:grid; gap:14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .stat { background: #f8fbff; border:1px solid var(--border); border-radius:18px; padding: 16px; }
-    .stat .label { color: var(--muted); font-size:12px; margin-bottom:8px; }
-    .stat .value { font-size: 26px; font-weight: 800; }
-    .tabs { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0; }
-    .tab { padding:10px 14px; border:1px solid var(--border); background:var(--surface); border-radius:999px; cursor:pointer; font-weight:700; }
-    .tab.active { background: var(--primary); color:white; border-color: var(--primary); }
-    .panel { display:none; }
-    .panel.active { display:block; }
-    .field-grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
-    input, select { width:100%; padding:12px 14px; border:1px solid var(--border); border-radius:14px; background:var(--surface); color:var(--text); }
-    .list { display:grid; gap:12px; }
-    .item { border:1px solid var(--border); border-radius:18px; padding:14px; background:#fff; }
-    .item strong { display:block; margin-bottom:6px; }
-    .pill { display:inline-block; padding:4px 10px; border-radius:999px; background:var(--primary-weak); color:var(--primary); font-size:12px; margin-inline-end:6px; margin-bottom:6px; }
-    .muted { color: var(--muted); }
-    .footer { color: var(--muted); font-size:12px; margin: 22px 0 12px; text-align:center; }
-    .mini { font-size:12px; color:var(--muted); }
-    pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.6; }
+    :root {{
+      color-scheme: dark;
+      --bg: #07111f;
+      --bg-2: #0b1728;
+      --surface: rgba(10,18,31,.84);
+      --surface-2: rgba(16,24,40,.96);
+      --border: rgba(148,163,184,.18);
+      --text: #e5eefc;
+      --muted: #91a4c4;
+      --accent: #6ea8ff;
+      --accent-2: #8b5cf6;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --shadow: 0 30px 80px rgba(0,0,0,.38);
+      --radius: 26px;
+    }}
+    * {{ box-sizing:border-box; }}
+    html, body {{
+      margin:0;
+      padding:0;
+      min-height:100%;
+      background:
+        radial-gradient(circle at top right, rgba(110,168,255,.24), transparent 28%),
+        radial-gradient(circle at top left, rgba(139,92,246,.22), transparent 26%),
+        linear-gradient(180deg, var(--bg), var(--bg-2));
+      color:var(--text);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    body {{ min-height:100vh; }}
+    .shell {{ max-width: 1680px; margin:0 auto; padding: 18px; }}
+    .hero {{
+      position:relative;
+      overflow:hidden;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(12,19,33,.94), rgba(7,17,31,.92));
+      box-shadow: var(--shadow);
+      border-radius: 32px;
+      padding: 24px;
+    }}
+    .hero::before {{
+      content:"";
+      position:absolute;
+      inset:-80px -160px auto auto;
+      width:320px;
+      height:320px;
+      background: radial-gradient(circle, rgba(110,168,255,.18), transparent 68%);
+      filter: blur(10px);
+      pointer-events:none;
+    }}
+    .top {{
+      display:flex;
+      justify-content:space-between;
+      gap:18px;
+      flex-wrap:wrap;
+      align-items:flex-start;
+      position:relative;
+      z-index:1;
+    }}
+    .brand {{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      max-width: 900px;
+    }}
+    .badge {{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      width:max-content;
+      padding:7px 12px;
+      border-radius:999px;
+      border:1px solid rgba(110,168,255,.22);
+      background: rgba(110,168,255,.10);
+      color: #cfe2ff;
+      font-size:12px;
+      letter-spacing:.3px;
+    }}
+    .title {{
+      font-size: clamp(30px, 4.5vw, 56px);
+      line-height:1.02;
+      margin:0;
+      letter-spacing:-.03em;
+    }}
+    .subtitle {{
+      color:var(--muted);
+      font-size: 15px;
+      line-height:1.8;
+      max-width: 920px;
+    }}
+    .hero-actions {{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:12px;
+      min-width: 320px;
+    }}
+    .toolbar {{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }}
+    .btn {{
+      appearance:none;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      color:var(--text);
+      border-radius: 16px;
+      padding: 12px 16px;
+      font-weight:700;
+      cursor:pointer;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }}
+    .btn:hover {{ transform: translateY(-1px); border-color: rgba(110,168,255,.45); }}
+    .btn.primary {{
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-color: transparent;
+      color: #fff;
+    }}
+    .btn.ghost {{
+      background: rgba(255,255,255,.02);
+    }}
+    .status-row {{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top: 14px;
+    }}
+    .chip {{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      color:var(--text);
+      font-size:13px;
+      backdrop-filter: blur(10px);
+    }}
+    .chip strong {{ font-size:14px; }}
+    .grid-kpi {{
+      display:grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap:14px;
+      margin-top:18px;
+    }}
+    .kpi {{
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      border-radius: 22px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      min-height: 96px;
+    }}
+    .kpi .label {{ color: var(--muted); font-size: 12px; margin-bottom: 10px; }}
+    .kpi .value {{ font-size: clamp(20px, 2vw, 30px); font-weight: 900; letter-spacing: -.03em; }}
+    .tabs {{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin: 18px 0;
+    }}
+    .tab {{
+      padding: 11px 16px;
+      border-radius: 999px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:800;
+    }}
+    .tab.active {{
+      background: linear-gradient(135deg, rgba(110,168,255,.95), rgba(139,92,246,.95));
+      border-color: transparent;
+      color:#fff;
+    }}
+    .panel {{ display:none; }}
+    .panel.active {{ display:block; }}
+    .card {{
+      border:1px solid var(--border);
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      backdrop-filter: blur(14px);
+    }}
+    .card + .card {{ margin-top:18px; }}
+    .card-head {{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:flex-start;
+      flex-wrap:wrap;
+      margin-bottom: 14px;
+    }}
+    h2 {{
+      margin:0;
+      font-size: 20px;
+      letter-spacing:-.02em;
+    }}
+    .hint {{ color: var(--muted); font-size: 13px; line-height:1.8; }}
+    .grid {{
+      display:grid;
+      gap:14px;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    }}
+    .field-grid {{
+      display:grid;
+      gap:12px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }}
+    label {{
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }}
+    input, select, textarea {{
+      width:100%;
+      padding: 13px 14px;
+      border-radius: 15px;
+      border:1px solid var(--border);
+      background: rgba(8,14,24,.88);
+      color: var(--text);
+      outline:none;
+    }}
+    input:focus, select:focus, textarea:focus {{
+      border-color: rgba(110,168,255,.5);
+      box-shadow: 0 0 0 4px rgba(110,168,255,.12);
+    }}
+    .item {{
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      border-radius: 20px;
+      padding: 14px;
+    }}
+    .item strong {{ display:block; margin-bottom:8px; }}
+    .list {{
+      display:grid;
+      gap:12px;
+    }}
+    .pill {{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 5px 10px;
+      border-radius:999px;
+      background: rgba(110,168,255,.12);
+      color: #cfe2ff;
+      font-size:12px;
+      margin-inline-end:6px;
+      margin-bottom:6px;
+      border:1px solid rgba(110,168,255,.22);
+    }}
+    .pill.good {{ background: rgba(34,197,94,.12); color:#b8f3cd; border-color: rgba(34,197,94,.22); }}
+    .pill.warn {{ background: rgba(245,158,11,.12); color:#fde2b1; border-color: rgba(245,158,11,.22); }}
+    .pill.bad {{ background: rgba(239,68,68,.12); color:#fecaca; border-color: rgba(239,68,68,.22); }}
+    .muted {{ color: var(--muted); }}
+    .mini {{ font-size:12px; color:var(--muted); line-height:1.65; }}
+    .table {{
+      width:100%;
+      border-collapse:collapse;
+      overflow:hidden;
+      border-radius:18px;
+      border:1px solid var(--border);
+    }}
+    .table th, .table td {{
+      padding: 12px 10px;
+      border-bottom:1px solid rgba(148,163,184,.12);
+      text-align:right;
+      font-size: 13px;
+    }}
+    .table th {{
+      color: var(--muted);
+      font-size:12px;
+      font-weight:700;
+      background: rgba(255,255,255,.02);
+    }}
+    .table tr:last-child td {{ border-bottom:none; }}
+    .footer {{
+      color: var(--muted);
+      text-align:center;
+      font-size:12px;
+      padding: 18px 0 8px;
+    }}
+    .two-col {{
+      display:grid;
+      gap:14px;
+      grid-template-columns: 1.2fr .8fr;
+    }}
+    @media (max-width: 1100px) {{
+      .grid-kpi {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .two-col {{ grid-template-columns: 1fr; }}
+      .hero-actions {{ width:100%; min-width:0; }}
+    }}
+    @media (max-width: 640px) {{
+      .shell {{ padding:12px; }}
+      .hero {{ padding:18px; border-radius:24px; }}
+      .grid-kpi {{ grid-template-columns: 1fr 1fr; }}
+      .toolbar {{ width:100%; }}
+      .btn {{ flex:1 1 auto; }}
+    }}
   </style>
 </head>
 <body>
   <div class="shell">
     <section class="hero">
-      <div class="hero-top">
-        <div>
-          <h1 class="title">Supreme Zone Platform</h1>
-          <div class="subtitle">لوحة تحكم بيضاء حديثة لإضافة الاستراتيجية، ضبط مصدر البيانات، تحليل الأزواج، ومراقبة الزونات مباشرة.</div>
+      <div class="top">
+        <div class="brand">
+          <span class="badge">Supreme Zone Platform • Live Control Center</span>
+          <h1 class="title">منصة تحليل مؤسسي بواجهة احترافية وسريعة</h1>
+          <div class="subtitle">
+            مركز أوامر وتحكم لإدارة الاستراتيجيات، مزامنة البيانات، ومراقبة الزونات والنتائج مع واجهة حديثة أوضح وأكثر نظافة.
+          </div>
           <div class="status-row">
             <span class="chip">الحالة: <strong id="bootReady">جاهز</strong></span>
             <span class="chip">الاستراتيجية: <strong id="activeStrategy">__ACTIVE_STRATEGY__</strong></span>
@@ -257,29 +514,31 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
             <span class="chip">الفريمات: <strong id="activeTimeframes">__TIMEFRAMES__</strong></span>
           </div>
         </div>
-        <div>
+        <div class="hero-actions">
           <div class="toolbar">
-            <button class="btn primary" id="runBtn">بدء التشغيل / Analyze</button>
-            <button class="btn" id="syncBtn">جلب البيانات</button>
-            <button class="btn" id="startMonBtn">بدء المراقبة</button>
-            <button class="btn" id="stopMonBtn">إيقاف المراقبة</button>
-            <button class="btn ghost" id="refreshBtn">تحديث</button>
+            <button class="btn primary" id="runBtn">Run / Analyze</button>
+            <button class="btn" id="syncBtn">Sync Data</button>
+            <button class="btn" id="startMonBtn">Start Monitor</button>
+            <button class="btn" id="stopMonBtn">Stop Monitor</button>
+            <button class="btn ghost" id="refreshBtn">Refresh</button>
           </div>
+          <div class="mini">إذا البيانات ناقصة، سيظهر السبب بدل فشل صامت.</div>
         </div>
       </div>
-      <div class="grid" style="margin-top:18px;">
-        <div class="stat"><div class="label">الأزواج المحللة</div><div class="value" id="statAnalyzed">0</div></div>
-        <div class="stat"><div class="label">الصفقات المفتوحة</div><div class="value" id="statOpenPositions">0</div></div>
-        <div class="stat"><div class="label">الزونات النشطة</div><div class="value" id="statZones">0</div></div>
-        <div class="stat"><div class="label">آخر التحليلات</div><div class="value" id="statReports">0</div></div>
-        <div class="stat"><div class="label">سرعة المحرك</div><div class="value" id="statCycles">0</div></div>
-        <div class="stat"><div class="label">حالة المراقبة</div><div class="value" id="statMonitoring">0</div></div>
+
+      <div class="grid-kpi">
+        <div class="kpi"><div class="label">الأزواج المحللة</div><div class="value" id="statAnalyzed">0</div></div>
+        <div class="kpi"><div class="label">الصفقات المفتوحة</div><div class="value" id="statOpenPositions">0</div></div>
+        <div class="kpi"><div class="label">الزونات النشطة</div><div class="value" id="statZones">0</div></div>
+        <div class="kpi"><div class="label">التقارير</div><div class="value" id="statReports">0</div></div>
+        <div class="kpi"><div class="label">الدورات</div><div class="value" id="statCycles">0</div></div>
+        <div class="kpi"><div class="label">المراقبة</div><div class="value" id="statMonitoring">0</div></div>
       </div>
     </section>
 
     <div class="tabs">
       <button class="tab active" data-panel="overviewPanel">Overview</button>
-      <button class="tab" data-panel="strategyPanel">Strategy Manager</button>
+      <button class="tab" data-panel="strategyPanel">Strategy</button>
       <button class="tab" data-panel="dataPanel">Data Center</button>
       <button class="tab" data-panel="analysisPanel">Analysis</button>
       <button class="tab" data-panel="reportsPanel">Reports</button>
@@ -288,71 +547,186 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
       <button class="tab" data-panel="settingsPanel">Settings</button>
     </div>
 
-    <section class="panel active" id="overviewPanel"><div class="card"><h2>Overview</h2><div class="grid" id="overviewGrid"></div></div></section>
+    <section class="panel active" id="overviewPanel">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Overview</h2>
+              <div class="hint">ملخص سريع للحالة الحالية والآخر خطأ ونقطة البدء.</div>
+            </div>
+          </div>
+          <div class="grid" id="overviewGrid"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Live Signal</h2>
+              <div class="hint">أقرب معلومات تشغيلية مباشرة من الـ snapshot.</div>
+            </div>
+          </div>
+          <div class="list">
+            <div class="item"><strong>آخر توليد</strong><div id="lastGenerated" class="mini">-</div></div>
+            <div class="item"><strong>آخر خطأ</strong><div id="lastError" class="mini">-</div></div>
+            <div class="item"><strong>التحليل الحالي</strong><div id="currentAnalysis" class="mini">-</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section class="panel" id="strategyPanel">
       <div class="card">
-        <h2>Strategy Manager</h2>
+        <div class="card-head">
+          <div>
+            <h2>Strategy Manager</h2>
+            <div class="hint">رفع ملف استراتيجية وتفعيلها أو إبقاؤها محفوظة فقط.</div>
+          </div>
+        </div>
         <form id="strategyForm" class="field-grid">
-          <div><label>رفع ملف الاستراتيجية (PDF / JSON / TXT / MD / YAML)</label><input type="file" id="strategyFile" accept=".pdf,.json,.txt,.md,.yaml,.yml" required /></div>
-          <div><label>بعد الرفع</label><select id="activateStrategy"><option value="true">تفعيلها مباشرة</option><option value="false">رفع فقط</option></select></div>
-          <div style="grid-column:1/-1; display:flex; gap:10px; flex-wrap:wrap; align-items:center;"><button class="btn primary" type="submit">➕ إضافة استراتيجية</button><button class="btn" type="button" id="deactivateStrategyBtn">إيقاف الاستراتيجية النشطة</button></div>
+          <div><label>ملف الاستراتيجية (PDF / JSON / TXT / MD / YAML)</label><input type="file" id="strategyFile" accept=".pdf,.json,.txt,.md,.yaml,.yml" required /></div>
+          <div><label>السلوك بعد الرفع</label><select id="activateStrategy"><option value="true">تفعيلها مباشرة</option><option value="false">حفظ فقط</option></select></div>
+          <div style="grid-column:1/-1; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn primary" type="submit">Upload Strategy</button>
+            <button class="btn" type="button" id="deactivateStrategyBtn">Deactivate Active</button>
+          </div>
         </form>
-        <div class="grid" style="margin-top:18px;"><div class="item"><strong>الاستراتيجية النشطة</strong><div id="activeStrategyCard"></div></div><div class="item"><strong>الإصدارات</strong><div id="strategyHistory" class="list"></div></div></div>
+        <div class="two-col" style="margin-top:18px;">
+          <div class="item"><strong>الاستراتيجية النشطة</strong><div id="activeStrategyCard" class="mini"></div></div>
+          <div class="item"><strong>الإصدارات</strong><div id="strategyHistory" class="list"></div></div>
+        </div>
       </div>
     </section>
 
     <section class="panel" id="dataPanel">
       <div class="card">
-        <h2>Data Center</h2>
+        <div class="card-head">
+          <div>
+            <h2>Data Center</h2>
+            <div class="hint">اختر مصدر البيانات، الأزواج، الفريمات، وعدد الشموع المطلوب.</div>
+          </div>
+        </div>
         <form id="dataForm" class="field-grid">
           <div><label>مصدر البيانات</label><select id="dataSource"><option value="twelve_data">Twelve Data</option><option value="mt5">MT5</option></select></div>
           <div><label>عدد الشموع</label><input id="barsInput" type="number" min="50" step="1" value="__BARS__" /></div>
-          <div><label>الأزواج (مفصولة بفاصلة)</label><input id="symbolsInput" type="text" value="__SYMBOLS__" placeholder="EURUSD,GBPUSD,XAUUSD" /></div>
-          <div><label>الفريمات (مفصولة بفاصلة)</label><input id="timeframesInput" type="text" value="__TIMEFRAMES__" placeholder="D1,H4,H1,M15" /></div>
-          <div><label>Twelve Data API Key</label><input id="apiKeyInput" type="password" value="__API_KEY_STATE__" placeholder="ضع المفتاح هنا" /></div>
+          <div><label>الأزواج</label><input id="symbolsInput" type="text" value="__SYMBOLS__" placeholder="EURUSD,GBPUSD,XAUUSD" /></div>
+          <div><label>الفريمات</label><input id="timeframesInput" type="text" value="__TIMEFRAMES__" placeholder="D1,H4,H1,M15" /></div>
+          <div><label>Twelve Data API Key</label><input id="apiKeyInput" type="password" value="" placeholder="مفتاح محفوظ" /></div>
           <div><label>Base URL</label><input id="baseUrlInput" type="text" value="__BASE_URL__" /></div>
-          <div style="grid-column:1/-1; display:flex; gap:10px; flex-wrap:wrap; align-items:center;"><button class="btn primary" type="submit">حفظ إعدادات البيانات</button><button class="btn" type="button" id="syncNowBtn">مزامنة فورية</button></div>
+          <div style="grid-column:1/-1; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <span class="pill" id="apiKeyBadge">__API_KEY_STATE__</span>
+            <button class="btn primary" type="submit">Save Data Settings</button>
+            <button class="btn" type="button" id="syncNowBtn">Sync Now</button>
+          </div>
         </form>
       </div>
     </section>
 
-    <section class="panel" id="analysisPanel"><div class="card"><h2>Analysis</h2><div class="grid"><div class="item"><strong>BUY ZONE</strong><div id="buyZoneBox"></div></div><div class="item"><strong>SELL ZONE</strong><div id="sellZoneBox"></div></div></div><div class="list" style="margin-top:14px;" id="analysisFrames"></div></div></section>
-    <section class="panel" id="reportsPanel"><div class="card"><h2>Reports</h2><div class="grid"><div class="item"><strong>آخر التقارير</strong><div id="reportCount"></div></div><div class="item"><strong>الملفات</strong><div id="reportFiles" class="list"></div></div></div></div></section>
-    <section class="panel" id="monitoringPanel"><div class="card"><h2>Monitoring</h2><div class="grid"><div class="item"><strong>الحالة</strong><div id="monitorStatus"></div></div><div class="item"><strong>Watchlist</strong><div id="watchlistBox" class="list"></div></div></div></div></section>
-    <section class="panel" id="historyPanel"><div class="card"><h2>History</h2><div class="grid"><div class="item"><strong>Sync Runs</strong><div id="syncHistory" class="list"></div></div><div class="item"><strong>Charts</strong><div id="chartsHistory" class="list"></div></div><div class="item"><strong>Errors</strong><div id="errorsHistory" class="list"></div></div></div></div></section>
-    <section class="panel" id="settingsPanel"><div class="card"><h2>Settings</h2><div class="grid" id="settingsGrid"></div></div></section>
+    <section class="panel" id="analysisPanel">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Analysis</h2>
+            <div class="hint">BUY ZONE و SELL ZONE مع تفاصيل الإطار الزمني.</div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="item"><strong>BUY ZONE</strong><div id="buyZoneBox"></div></div>
+          <div class="item"><strong>SELL ZONE</strong><div id="sellZoneBox"></div></div>
+        </div>
+        <div class="list" style="margin-top:14px;" id="analysisFrames"></div>
+      </div>
+    </section>
 
-    <div class="footer">Supreme Zone Platform • Render Web Service • White Dashboard Edition</div>
+    <section class="panel" id="reportsPanel">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Reports</h2>
+            <div class="hint">ملفات التقارير والنواتج الأخيرة.</div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="item"><strong>آخر التقارير</strong><div id="reportCount"></div></div>
+          <div class="item"><strong>الملفات</strong><div id="reportFiles" class="list"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="monitoringPanel">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Monitoring</h2>
+            <div class="hint">تشغيل وإيقاف المراقبة وعرض عناصر المتابعة.</div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="item"><strong>الحالة</strong><div id="monitorStatus"></div></div>
+          <div class="item"><strong>Watchlist</strong><div id="watchlistBox" class="list"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="historyPanel">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>History</h2>
+            <div class="hint">سجل المزامنة، الشارتات، والأخطاء.</div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="item"><strong>Sync Runs</strong><div id="syncHistory" class="list"></div></div>
+          <div class="item"><strong>Charts</strong><div id="chartsHistory" class="list"></div></div>
+          <div class="item"><strong>Errors</strong><div id="errorsHistory" class="list"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="settingsPanel">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Settings</h2>
+            <div class="hint">ملخص الإعدادات الحالية ونقاط الربط الأساسية.</div>
+          </div>
+        </div>
+        <div class="grid" id="settingsGrid"></div>
+      </div>
+    </section>
+
+    <div class="footer">Supreme Zone Platform • modern dashboard build • RTL support</div>
   </div>
 
-  <script id="app-data" type="application/json">__PAYLOAD__</script>
+  <script id="app-data" type="application/json">{payload}</script>
   <script>
     const APP = JSON.parse(document.getElementById('app-data').textContent);
     const $ = (id) => document.getElementById(id);
-    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    const fmtZone = (z) => !z ? '<span class="muted">لا توجد</span>' : `<div><span class="pill">${esc(z.side)}</span><span class="pill">${esc(z.timeframe)}</span><span class="pill">${esc(z.score)}</span></div><div class="muted">${esc(z.lower)} → ${esc(z.upper)}</div><div class="mini">${esc(z.note || '')}</div>`;
-    const fmtObj = (obj) => `<pre>${esc(JSON.stringify(obj, null, 2))}</pre>`;
+    const esc = (value) => String(value ?? '').replace(/[&<>"]'/g, (ch) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch]));
+    const fmtZone = (z) => !z
+      ? '<span class="muted">لا توجد</span>'
+      : `<div><span class="pill">${{esc(z.side)}}</span><span class="pill">${{esc(z.timeframe)}}</span><span class="pill">${{esc(z.score)}}</span></div><div class="mini">${{esc(z.lower)}} → ${{esc(z.upper)}}</div><div class="mini">${{esc(z.note || '')}}</div>`;
+    const fmtObj = (obj) => `<pre>${{esc(JSON.stringify(obj, null, 2))}}</pre>`;
 
-    function setActivePanel(panelId) {
+    function setActivePanel(panelId) {{
       document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
       document.getElementById(panelId).classList.add('active');
       document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.panel === panelId));
-    }
+    }}
 
     document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => setActivePanel(tab.dataset.panel)));
 
-    function renderAll() {
-      const snapshot = APP.snapshot || {};
-      const analysis = snapshot.analysis || {};
-      const monitoring = snapshot.monitoring || {};
-      const execution = snapshot.execution || {};
-      const reports = snapshot.reports || {};
-      const backtest = snapshot.backtest || {};
-      const search = snapshot.search || {};
-      const settings = APP.data_config || {};
-      const strategies = APP.strategies || {};
-      const history = APP.history || {};
+    function renderAll() {{
+      const snapshot = APP.snapshot || {{}};
+      const analysis = snapshot.analysis || {{}};
+      const monitoring = snapshot.monitoring || {{}};
+      const execution = snapshot.execution || {{}};
+      const reports = snapshot.reports || {{}};
+      const backtest = snapshot.backtest || {{}};
+      const search = snapshot.search || {{}};
+      const settings = APP.data_config || {{}};
+      const strategies = APP.strategies || {{}};
+      const history = APP.history || {{}}; 
 
       $('bootReady').textContent = APP.boot?.ready ? 'جاهز' : 'غير جاهز';
       $('activeStrategy').textContent = strategies.active?.name || 'N/A';
@@ -374,25 +748,31 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
         ['نتائج التنفيذ', execution.results || 0],
         ['عدد الملفات', (reports.files || []).length],
         ['الباك تست', backtest.runs || 0],
-      ].map((item) => `<div class="stat"><div class="label">${esc(item[0])}</div><div class="value" style="font-size:16px;">${esc(String(item[1]))}</div></div>`).join('');
+      ].map((item) => `<div class="item"><div class="mini">${{esc(item[0])}}</div><div style="font-size:20px;font-weight:900;margin-top:6px;">${{esc(String(item[1]))}}</div></div>`).join('');
+
+      $('lastGenerated').textContent = snapshot.generated_at || '-';
+      $('lastError').textContent = search.last_error || monitoring.last_error || backtest.last_error || 'لا يوجد';
+      $('currentAnalysis').textContent = `${{analysis.symbol || 'N/A'}} • ${{analysis.strategy_name || 'N/A'}}`;
 
       $('buyZoneBox').innerHTML = fmtZone(analysis.buy_zone);
       $('sellZoneBox').innerHTML = fmtZone(analysis.sell_zone);
-      $('analysisFrames').innerHTML = (analysis.frames || []).map((frame) => `<div class="item"><strong>${esc(frame.timeframe)} • ${esc(frame.symbol || '')}</strong>${fmtObj(frame)}</div>`).join('') || '<div class="item">لا توجد تحليلات بعد</div>';
+      $('analysisFrames').innerHTML = (analysis.frames || []).map((frame) => `<div class="item"><strong>${{esc(frame.timeframe)}} • ${{esc(frame.symbol || '')}}</strong>${{fmtObj(frame)}}</div>`).join('') || '<div class="item">لا توجد تحليلات بعد</div>';
 
       $('activeStrategyCard').innerHTML = strategies.active ? fmtObj(strategies.active) : '<span class="muted">لا توجد استراتيجية نشطة</span>';
-      const historyEntries = Object.entries(strategies.history || {});
-      $('strategyHistory').innerHTML = historyEntries.length ? historyEntries.map(([name, versions]) => `<div class="item"><strong>${esc(name)}</strong><div class="mini">الإصدارات: ${versions.length}</div>${versions.map((v) => `<div class="pill">${esc(v.version)}${v.active ? ' • active' : ''}</div>`).join('')}</div>`).join('') : '<div class="item">لا يوجد تاريخ استراتيجيات</div>';
+      const historyEntries = Object.entries(strategies.history || {{}});
+      $('strategyHistory').innerHTML = historyEntries.length
+        ? historyEntries.map(([name, versions]) => `<div class="item"><strong>${{esc(name)}}</strong><div class="mini">الإصدارات: ${{versions.length}}</div>${{versions.map((v) => `<div class="pill">${{esc(v.version)}}${{v.active ? ' • active' : ''}}</div>`).join('')}}</div>`).join('')
+        : '<div class="item">لا يوجد تاريخ استراتيجيات</div>';
 
-      $('reportCount').textContent = `${reports.artifacts || 0} ملف تقرير`;
-      $('reportFiles').innerHTML = (reports.files || []).map((file) => `<div class="item">${esc(file)}</div>`).join('') || '<div class="item">لا توجد تقارير</div>';
+      $('reportCount').textContent = `${{reports.artifacts || 0}} ملف تقرير`;
+      $('reportFiles').innerHTML = (reports.files || []).map((file) => `<div class="item">${{esc(file)}}</div>`).join('') || '<div class="item">لا توجد تقارير</div>';
 
-      $('monitorStatus').innerHTML = `<div class="pill">${monitoring.running ? 'Running' : 'Stopped'}</div><div class="pill">Cycles: ${monitoring.cycles || 0}</div><div class="pill">Invalidations: ${monitoring.invalidations || 0}</div><div class="pill">Reanalyses: ${monitoring.reanalyses || 0}</div>`;
-      $('watchlistBox').innerHTML = (monitoring.watchlist || []).map((item) => `<div class="item"><strong>${esc(item.symbol)}</strong>${fmtObj(item)}</div>`).join('') || '<div class="item">لا توجد عناصر مراقبة</div>';
+      $('monitorStatus').innerHTML = `<div class="pill ${{monitoring.running ? 'good' : 'warn'}}">${{monitoring.running ? 'Running' : 'Stopped'}}</div><div class="pill">Cycles: ${{monitoring.cycles || 0}}</div><div class="pill">Invalidations: ${{monitoring.invalidations || 0}}</div><div class="pill">Reanalyses: ${{monitoring.reanalyses || 0}}</div>`;
+      $('watchlistBox').innerHTML = (monitoring.watchlist || []).map((item) => `<div class="item"><strong>${{esc(item.symbol)}}</strong>${{fmtObj(item)}}</div>`).join('') || '<div class="item">لا توجد عناصر مراقبة</div>';
 
-      $('syncHistory').innerHTML = (history.sync_runs || []).map((row) => `<div class="item"><strong>${esc(row.symbol)} • ${esc(row.timeframe)}</strong><div class="mini">${esc(row.status)} • ${esc(row.bars)} bars • ${esc(row.created_at)}</div></div>`).join('') || '<div class="item">لا توجد عمليات مزامنة</div>';
-      $('chartsHistory').innerHTML = (history.charts || []).map((row) => `<div class="item"><strong>${esc(row.symbol)} • ${esc(row.timeframe)}</strong><div class="mini">${esc(row.chart_path)}</div></div>`).join('') || '<div class="item">لا توجد شارتات</div>';
-      $('errorsHistory').innerHTML = (history.errors || []).map((row) => `<div class="item"><strong>${esc(row.context)}</strong><div class="mini">${esc(row.message)}</div></div>`).join('') || '<div class="item">لا توجد أخطاء</div>';
+      $('syncHistory').innerHTML = (history.sync_runs || []).map((row) => `<div class="item"><strong>${{esc(row.symbol)}} • ${{esc(row.timeframe)}}</strong><div class="mini">${{esc(row.status)}} • ${{esc(row.bars)}} bars • ${{esc(row.created_at)}}</div></div>`).join('') || '<div class="item">لا توجد عمليات مزامنة</div>';
+      $('chartsHistory').innerHTML = (history.charts || []).map((row) => `<div class="item"><strong>${{esc(row.symbol)}} • ${{esc(row.timeframe)}}</strong><div class="mini">${{esc(row.chart_path)}}</div></div>`).join('') || '<div class="item">لا توجد شارتات</div>';
+      $('errorsHistory').innerHTML = (history.errors || []).map((row) => `<div class="item"><strong>${{esc(row.context)}}</strong><div class="mini">${{esc(row.message)}}</div></div>`).join('') || '<div class="item">لا توجد أخطاء</div>';
 
       $('settingsGrid').innerHTML = [
         ['مصدر البيانات', settings.source || 'mt5'],
@@ -401,96 +781,104 @@ def _render_dashboard_html(snapshot: dict[str, Any], strategies: dict[str, Any],
         ['الشموع', settings.bars || 500],
         ['API Key', settings.api_key_present ? 'Present' : 'Missing'],
         ['Base URL', settings.base_url || ''],
-      ].map((item) => `<div class="stat"><div class="label">${esc(item[0])}</div><div class="value" style="font-size:18px;">${esc(String(item[1]))}</div></div>`).join('');
-    }
+        ['MT5', settings.mt5_enabled ? 'Enabled' : 'Disabled'],
+      ].map((item) => `<div class="item"><div class="mini">${{esc(item[0])}}</div><div style="font-size:18px;font-weight:800;margin-top:6px;">${{esc(String(item[1]))}}</div></div>`).join('');
 
-    async function postJson(url, body) {
-      const response = await fetch(url, {
+      $('apiKeyBadge').textContent = settings.api_key_present ? 'API Key محفوظ' : 'API Key غير محفوظ';
+      $('apiKeyBadge').className = `pill ${{settings.api_key_present ? 'good' : 'warn'}}`;
+      $('apiKeyInput').value = '';
+      $('baseUrlInput').value = settings.base_url || '';
+      $('barsInput').value = String(settings.bars || 500);
+      $('symbolsInput').value = (settings.symbols || []).join(',');
+      $('timeframesInput').value = (settings.timeframes || []).join(',');
+      $('dataSource').value = settings.source || 'mt5';
+    }}
+
+    async function postJson(url, body) {{
+      const response = await fetch(url, {{
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {{ 'Content-Type': 'application/json' }},
         body: JSON.stringify(body),
-      });
+      }});
       if (!response.ok) throw new Error(await response.text());
       return response.json();
-    }
+    }}
 
-    document.getElementById('strategyForm').addEventListener('submit', async (event) => {
+    document.getElementById('strategyForm').addEventListener('submit', async (event) => {{
       event.preventDefault();
       const file = document.getElementById('strategyFile').files[0];
       if (!file) return;
       const formData = new FormData();
       formData.append('file', file);
       formData.append('activate', document.getElementById('activateStrategy').value);
-      const response = await fetch('/api/strategies/upload', { method: 'POST', body: formData });
+      const response = await fetch('/api/strategies/upload', {{ method: 'POST', body: formData }});
       if (!response.ok) alert('فشل رفع الاستراتيجية'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('deactivateStrategyBtn').addEventListener('click', async () => {
-      const response = await fetch('/api/strategies/deactivate', { method: 'POST' });
+    document.getElementById('deactivateStrategyBtn').addEventListener('click', async () => {{
+      const response = await fetch('/api/strategies/deactivate', {{ method: 'POST' }});
       if (!response.ok) alert('فشل إيقاف الاستراتيجية'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('dataForm').addEventListener('submit', async (event) => {
+    document.getElementById('dataForm').addEventListener('submit', async (event) => {{
       event.preventDefault();
-      const payload = {
+      const payload = {{
         source: document.getElementById('dataSource').value,
         symbols: document.getElementById('symbolsInput').value,
         timeframes: document.getElementById('timeframesInput').value,
         bars: Number(document.getElementById('barsInput').value || 500),
         api_key: document.getElementById('apiKeyInput').value,
         base_url: document.getElementById('baseUrlInput').value,
-      };
+      }};
       const response = await postJson('/api/data/config', payload);
       if (!response.ok) alert('فشل حفظ البيانات'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('runBtn').addEventListener('click', async () => {
-      const response = await fetch('/api/run', { method: 'POST' });
+    document.getElementById('runBtn').addEventListener('click', async () => {{
+      const response = await fetch('/api/run', {{ method: 'POST' }});
       if (!response.ok) alert('فشل التشغيل'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('syncBtn').addEventListener('click', async () => {
-      const response = await fetch('/api/data/sync', { method: 'POST' });
+    document.getElementById('syncBtn').addEventListener('click', async () => {{
+      const response = await fetch('/api/data/sync', {{ method: 'POST' }});
       if (!response.ok) alert('فشل جلب البيانات'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('syncNowBtn').addEventListener('click', async () => {
-      const response = await fetch('/api/data/sync', { method: 'POST' });
+    document.getElementById('syncNowBtn').addEventListener('click', async () => {{
+      const response = await fetch('/api/data/sync', {{ method: 'POST' }});
       if (!response.ok) alert('فشل جلب البيانات'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('startMonBtn').addEventListener('click', async () => {
-      const response = await fetch('/api/monitoring/start', { method: 'POST' });
+    document.getElementById('startMonBtn').addEventListener('click', async () => {{
+      const response = await fetch('/api/monitoring/start', {{ method: 'POST' }});
       if (!response.ok) alert('فشل بدء المراقبة'); else window.location.reload();
-    });
+    }});
 
-    document.getElementById('stopMonBtn').addEventListener('click', async () => {
-      const response = await fetch('/api/monitoring/stop', { method: 'POST' });
+    document.getElementById('stopMonBtn').addEventListener('click', async () => {{
+      const response = await fetch('/api/monitoring/stop', {{ method: 'POST' }});
       if (!response.ok) alert('فشل إيقاف المراقبة'); else window.location.reload();
-    });
+    }});
 
     document.getElementById('refreshBtn').addEventListener('click', () => window.location.reload());
     renderAll();
   </script>
 </body>
 </html>"""
-
     return (
         html.replace("__PAYLOAD__", payload)
         .replace("__ACTIVE_STRATEGY__", active_strategy)
-        .replace("__SOURCE__", source)
+        .replace("__SOURCE__", active_source)
         .replace("__SYMBOLS__", selected_symbols)
         .replace("__TIMEFRAMES__", selected_timeframes)
         .replace("__BARS__", bars)
         .replace("__BASE_URL__", base_url)
-        .replace("__API_KEY_STATE__", api_key_state)
+        .replace("__API_KEY_STATE__", api_key_status)
     )
 
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-
 
 @app.get("/", include_in_schema=False)
 async def root() -> RedirectResponse:
@@ -512,7 +900,7 @@ async def dashboard() -> HTMLResponse:
         return HTMLResponse(_render_dashboard_html(snapshot, _strategies_payload(), _data_config_payload(), _history_payload()))
     except Exception as exc:
         return HTMLResponse(
-            """<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Supreme Zone Platform</title><style>body{font-family:system-ui;background:#f8fafc;color:#0f172a;padding:24px}.card{max-width:900px;margin:0 auto;background:#fff;border:1px solid #dbe4f0;border-radius:20px;padding:20px;box-shadow:0 16px 40px rgba(15,23,42,.08)}pre{white-space:pre-wrap;word-break:break-word;background:#f1f5f9;padding:16px;border-radius:14px}</style></head><body><div class='card'><h1>Supreme Zone Platform</h1><p>Dashboard fallback is active because the live page hit an error.</p><pre>"""
+            """<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Supreme Zone Platform</title><style>body{font-family:system-ui;background:#0b1220;color:#e5eefc;padding:24px}.card{max-width:900px;margin:0 auto;background:#111827;border:1px solid rgba(148,163,184,.18);border-radius:20px;padding:20px;box-shadow:0 30px 80px rgba(0,0,0,.35)}pre{white-space:pre-wrap;word-break:break-word;background:#0f172a;padding:16px;border-radius:14px;border:1px solid rgba(148,163,184,.18)}</style></head><body><div class='card'><h1>Supreme Zone Platform</h1><p>Dashboard fallback is active because the live page hit an error.</p><pre>"""
             + escape(str(exc))
             + """</pre><p>Open /healthz for a quick status check.</p></div></body></html>""",
             status_code=200,
@@ -623,6 +1011,7 @@ async def api_data_config(request: Request) -> dict[str, Any]:
     platform.data_engine.set_data_source(source, api_key=api_key, base_url=base_url)
     app.state.runtime["data_source"] = platform.data_engine.data_source
     app.state.runtime["bars"] = bars
+    app.state.runtime["api_key_present"] = bool(platform.data_engine.twelve_data_api_key)
     return {"ok": True, "data_config": _data_config_payload()}
 
 
