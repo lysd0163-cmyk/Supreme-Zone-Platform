@@ -23,6 +23,7 @@ from .timeframe_manager import TimeframeManager
 
 
 _DEFAULT_TWELVE_DATA_BASE_URL = "https://api.twelvedata.com/time_series"
+_INVALID_API_KEY_MARKERS = {"", "***", "present", "missing", "none", "null"}
 
 
 @dataclass(slots=True)
@@ -96,7 +97,9 @@ class DataEngine:
         if self.data_source not in {"mt5", "twelve_data"}:
             self.data_source = "mt5"
         if api_key is not None:
-            self.twelve_data_api_key = api_key.strip()
+            cleaned_api_key = api_key.strip()
+            if cleaned_api_key.lower() not in _INVALID_API_KEY_MARKERS:
+                self.twelve_data_api_key = cleaned_api_key
         if base_url is not None:
             self.twelve_data_base_url = self._normalize_base_url(base_url)
         self.status.data_source = self.data_source
@@ -271,6 +274,10 @@ class DataEngine:
     ) -> dict[str, Any]:
         try:
             market_bars = self.fetch_ohlc(symbol, timeframe, bars=bars, use_cache=use_cache, force_refresh=force_refresh)
+            if len(market_bars) < self.settings.minimum_candles:
+                raise DataSyncError(
+                    f"Insufficient OHLC bars for {symbol} {timeframe}: {len(market_bars)} < {self.settings.minimum_candles}"
+                )
             chart_path = self.render_chart(symbol, timeframe, market_bars)
             self.database.record_sync_run(symbol, timeframe, len(market_bars), status="ok")
             return {
