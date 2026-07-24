@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,7 @@ def _coerce_items(value: Any) -> tuple[str, ...]:
     if isinstance(value, (list, tuple, set)):
         items = value
     else:
-        items = str(value).split(",")
+        items = re.split(r"[\n,;،]+", str(value))
     normalized: list[str] = []
     for item in items:
         text = str(item).strip().upper()
@@ -29,7 +30,7 @@ def _coerce_items(value: Any) -> tuple[str, ...]:
 def _runtime_config_path(platform) -> Path:
     storage_root = getattr(getattr(platform, "data_engine", None), "storage", None)
     root = getattr(storage_root, "root", Path("storage"))
-    return Path(root) / "runtime" / _RUNTIME_CONFIG_FILENAME
+    return Path(root) / "cache" / _RUNTIME_CONFIG_FILENAME
 
 
 def _persist_runtime_config(platform, payload: dict[str, Any]) -> None:
