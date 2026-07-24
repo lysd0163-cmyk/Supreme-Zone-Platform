@@ -27,7 +27,7 @@ from ..modules.report_engine.service import ReportEngine
 from ..modules.search_engine.service import SearchEngine
 from ..modules.strategy_manager.service import StrategyManager
 from ..modules.validation_engine.service import ValidationEngine
-from ..runtime_fixes import install_webapp_runtime_fixes
+from ..runtime_fixes import restore_persisted_state
 
 
 _REQUIRED_STORAGE_DIRS = (
@@ -46,7 +46,6 @@ def bootstrap() -> BootstrapResult:
     logger = configure_logging(level=settings.log_level, log_dir=settings.storage.logs)
 
     install_runtime_patches()
-    install_webapp_runtime_fixes()
 
     logger.info("Bootstrapping %s", settings.app_name)
     for folder in _REQUIRED_STORAGE_DIRS:
@@ -105,6 +104,8 @@ def bootstrap() -> BootstrapResult:
         backtest_engine=backtest_engine,
         dashboard_service=dashboard_service,
     )
+
+    restore_persisted_state(platform)
 
     container.register_instance(SettingsManager, settings_manager)
     container.register_instance(Settings, settings)
