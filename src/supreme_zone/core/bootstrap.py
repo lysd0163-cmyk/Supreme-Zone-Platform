@@ -27,7 +27,7 @@ from ..modules.report_engine.service import ReportEngine
 from ..modules.search_engine.service import SearchEngine
 from ..modules.strategy_manager.service import StrategyManager
 from ..modules.validation_engine.service import ValidationEngine
-from ..runtime_fixes import restore_persisted_state
+from ..runtime_fixes import install_runtime_persistence_patches, restore_persisted_state
 
 
 _REQUIRED_STORAGE_DIRS = (
@@ -105,6 +105,7 @@ def bootstrap() -> BootstrapResult:
         dashboard_service=dashboard_service,
     )
 
+    install_runtime_persistence_patches(platform)
     restore_persisted_state(platform)
 
     container.register_instance(SettingsManager, settings_manager)
